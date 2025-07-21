@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+sse-starlette
+e2b
+httpx
+loguru 
+python-dotenv 
