@@ -9,13 +9,35 @@ A FastAPI backend that streams autonomous coding agent progress via Server-Sent 
 - Logging with Loguru
 - Ready for E2B sandbox integration
 
+## Setting up the Environment
+
+To ensure a clean and reproducible environment for your project, it's highly recommended to use a virtual environment (venv). This approach helps to isolate project dependencies from the system Python environment and ensures that all dependencies are consistently installed across different environments.
+
+To create a virtual environment, run:
+
+```sh
+python -m venv venv
+```
+
+Then, activate the virtual environment:
+
+```sh
+source venv/bin/activate
+```
+
+On Windows, use `venv\Scripts\activate` instead.
+
 ## Install dependencies
+
+Once the virtual environment is activated, install the project dependencies:
 
 ```sh
 pip install -r requirements.txt
 ```
 
 ## Run the app
+
+To run the application, use:
 
 ```sh
 uvicorn app.main:app --reload

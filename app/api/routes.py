@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from app.services.agent import run_agent
-from app.utils.sse import sse_event_generator
 
 router = APIRouter()
 

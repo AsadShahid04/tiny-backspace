@@ -1,5 +1,12 @@
-# Placeholder for E2B sandbox logic
+import os
+from e2b import Sandbox
 
-def clone_repo_in_sandbox(repo_url: str):
-    # Dummy implementation
-    return f"/sandbox/path/to/{repo_url.split('/')[-1]}" 
+def run_in_sandbox(commands, api_key=None):
+    sandbox = Sandbox(api_key=api_key or os.getenv("E2B_API_KEY"))
+    try:
+        process = sandbox.process.start("bash")
+        for cmd in commands:
+            output = process.run(cmd)
+            yield output.output
+    finally:
+        sandbox.close() 

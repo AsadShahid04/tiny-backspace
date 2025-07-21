@@ -1,13 +1,13 @@
-import asyncio
+import os
+from app.services.sandbox import run_in_sandbox
 
 async def run_agent(repo_url: str, prompt: str):
-    # Dummy implementation: yield fake progress updates
-    yield {"type": "info", "message": f"Cloning repo {repo_url}"}
-    await asyncio.sleep(1)
-    yield {"type": "info", "message": f"Analyzing prompt: {prompt}"}
-    await asyncio.sleep(1)
-    yield {"type": "info", "message": "Making code changes..."}
-    await asyncio.sleep(1)
-    yield {"type": "info", "message": "Committing changes and creating PR..."}
-    await asyncio.sleep(1)
+    repo_name = repo_url.rstrip('.git').split('/')[-1]
+    commands = [
+        f"git clone {repo_url}",
+        f"cd {repo_name} && pip install -r requirements.txt",
+        f"cd {repo_name} && echo 'Pretend to edit code for: {prompt}'",
+    ]
+    for step, output in enumerate(run_in_sandbox(commands)):
+        yield {"type": "step", "step": step, "output": output}
     yield {"type": "result", "pr_url": "https://github.com/example/repo/pull/1"} 
