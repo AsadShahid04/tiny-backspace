@@ -5,3 +5,4 @@ e2b
 httpx
 loguru 
 python-dotenv 
+e2b-code-interpreter

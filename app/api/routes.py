@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from app.services.agent import run_agent
+import json
 
 router = APIRouter()
 
@@ -11,7 +12,7 @@ async def code_endpoint(request: Request):
     prompt = data.get("prompt")
     async def event_stream():
         async for msg in run_agent(repo_url, prompt):
-            yield f"data: {msg}\n\n"
+            yield f"data: {json.dumps(msg)}\n\n"
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @router.get("/stream-dummy")

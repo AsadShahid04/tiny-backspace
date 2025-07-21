@@ -1,5 +1,5 @@
 import os
-from e2b import Sandbox
+from e2b.sandbox import Sandbox
 
 def run_in_sandbox(commands, api_key=None):
     sandbox = Sandbox(api_key=api_key or os.getenv("E2B_API_KEY"))
