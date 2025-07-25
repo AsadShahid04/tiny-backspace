@@ -6,3 +6,4 @@ httpx
 loguru 
 python-dotenv 
 e2b-code-interpreter
+aiohttp  # For testing SSE endpoints
