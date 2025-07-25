@@ -98,9 +98,10 @@ Processes a GitHub repository with AI-driven modifications and streams real-time
 2. **validation**: Validate repository URL
 3. **clone**: Clone GitHub repository
 4. **analysis**: Analyze repository structure
-5. **planning**: Plan code changes based on prompt
-6. **implementation**: Apply planned changes
-7. **complete**: Finalization and cleanup
+5. **reading**: Read existing files for context
+6. **planning**: AI agent generates code changes based on prompt
+7. **implementation**: Apply file modifications using E2B filesystem
+8. **complete**: Finalization and cleanup
 
 ## Usage Examples
 
@@ -172,7 +173,32 @@ curl -X POST http://localhost:8000/code \
 
 ## Testing
 
-Create a test script (`test_client.py`):
+### Comprehensive Test Suite
+
+The project includes a comprehensive test suite (`test_file_editing.py`) that demonstrates different types of code improvements:
+
+```bash
+# Run all tests
+python test_file_editing.py
+
+# Run a specific test
+python test_file_editing.py error_handling
+
+# List available tests
+python test_file_editing.py list
+```
+
+**Available test scenarios:**
+- `error_handling`: Adds comprehensive error handling and exception management
+- `testing`: Adds unit tests and improves test coverage  
+- `logging`: Implements better logging and monitoring capabilities
+- `api_improvements`: Enhances API endpoints with better validation
+- `configuration`: Adds configuration management and environment settings
+- `generic`: General code quality and maintainability improvements
+
+### Simple Test Example
+
+Create a basic test script:
 ```python
 #!/usr/bin/env python3
 import asyncio
@@ -199,12 +225,6 @@ async def test_code_endpoint():
 
 if __name__ == "__main__":
     asyncio.run(test_code_endpoint())
-```
-
-Run the test:
-```bash
-pip install aiohttp  # if not already installed
-python test_client.py
 ```
 
 ## Project Structure
@@ -247,6 +267,21 @@ The API is configured with permissive CORS settings for development. For product
 1. Edit `app/services/code_processor.py`
 2. Add new steps to the `process_code_request` function
 3. Use `yield create_status_update()` to stream progress
+
+### Customizing the AI Agent
+
+The AI agent logic is in `app/services/agent_runner.py`. The `run_agent()` function currently contains placeholder logic that generates dummy file edits based on prompt keywords.
+
+To integrate with actual AI services:
+1. Replace the placeholder logic in `run_agent()`
+2. Add your Claude/OpenAI API calls
+3. Parse the AI response into the required format:
+   ```python
+   [
+       {"filepath": "main.py", "new_content": "print('Hello')"},
+       ...
+   ]
+   ```
 
 ### Customizing Status Messages
 

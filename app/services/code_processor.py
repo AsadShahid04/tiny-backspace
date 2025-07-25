@@ -77,54 +77,112 @@ async def process_code_request(repo_url: str, prompt: str) -> AsyncGenerator[Dic
         file_count = len(ls_result.stdout.split('\n')) if ls_result.stdout else 0
         yield create_status_update("success", f"Repository analyzed. Found {file_count} code files", "analysis", 65)
         
-        # Step 5: Planning changes
+        # Step 5: Reading existing files
+        yield create_status_update("info", "Reading existing files for analysis...", "reading", 55)
+        await asyncio.sleep(0.5)
+        
+        # Read some common files to understand the project structure
+        files_to_read = ["README.md", "main.py", "app.py", "requirements.txt", "package.json"]
+        existing_files = {}
+        
+        for filename in files_to_read:
+            try:
+                file_path = f"{repo_name}/{filename}"
+                if sandbox.filesystem.exists(file_path):
+                    content = sandbox.filesystem.read(file_path)
+                    existing_files[filename] = content
+                    yield create_status_update("info", f"Read {filename} ({len(content)} chars)", "reading", 55)
+                    await asyncio.sleep(0.2)
+            except Exception as e:
+                logger.warning(f"Could not read {filename}: {str(e)}")
+        
+        yield create_status_update("success", f"Read {len(existing_files)} existing files", "reading", 65)
+        
+        # Step 6: Planning changes with AI agent
         yield create_status_update("info", f"Planning changes based on prompt: '{prompt}'", "planning", 70)
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.5)
         
-        # Dummy planning logic
-        planning_steps = [
-            "Analyzing code patterns and structure",
-            "Identifying files that need modification",
-            "Generating implementation strategy",
-            "Validating proposed changes"
-        ]
+        # Import and use the agent runner
+        from app.services.agent_runner import run_agent
         
-        for i, step in enumerate(planning_steps):
-            yield create_status_update("info", step, "planning", 70 + (i + 1) * 5)
-            await asyncio.sleep(0.4)
+        try:
+            # Get file edits from the AI agent
+            file_edits = await run_agent(prompt, repo_name)
+            yield create_status_update("success", f"Agent generated {len(file_edits)} file modifications", "planning", 85)
+        except Exception as e:
+            logger.error(f"Agent planning failed: {str(e)}")
+            yield create_status_update("error", f"Agent planning failed: {str(e)}", "planning")
+            raise
         
-        yield create_status_update("success", "Change plan generated successfully", "planning", 90)
+        # Step 7: Implementing file changes
+        yield create_status_update("info", "Implementing planned changes...", "implementation", 90)
+        await asyncio.sleep(0.3)
         
-        # Step 6: Implementing changes (dummy)
-        yield create_status_update("info", "Implementing planned changes...", "implementation", 92)
-        await asyncio.sleep(0.8)
+        files_modified = 0
+        for edit in file_edits:
+            try:
+                filepath = edit["filepath"]
+                new_content = edit["new_content"]
+                full_path = f"{repo_name}/{filepath}"
+                
+                # Ensure directory exists
+                dir_path = "/".join(full_path.split("/")[:-1])
+                if dir_path and not sandbox.filesystem.exists(dir_path):
+                    sandbox.filesystem.make_dir(dir_path)
+                
+                # Write the new content
+                sandbox.filesystem.write(full_path, new_content)
+                files_modified += 1
+                
+                yield create_status_update(
+                    "success", 
+                    f"Modified {filepath} ({len(new_content)} chars)", 
+                    "implementation", 
+                    90 + (files_modified * 5)
+                )
+                await asyncio.sleep(0.2)
+                
+            except Exception as e:
+                logger.error(f"Failed to modify {edit.get('filepath', 'unknown')}: {str(e)}")
+                yield create_status_update(
+                    "warning", 
+                    f"Failed to modify {edit.get('filepath', 'unknown')}: {str(e)}", 
+                    "implementation"
+                )
         
-        # Simulate file modifications
-        modification_steps = [
-            f"Modified 3 files in {repo_name}/src/",
-            f"Updated configuration in {repo_name}/config/",
-            f"Added new utility functions",
-            "Running code validation checks"
-        ]
+        if files_modified == 0:
+            yield create_status_update("warning", "No files were modified", "implementation", 95)
+        else:
+            yield create_status_update("success", f"Successfully modified {files_modified} files", "implementation", 95)
         
-        for i, step in enumerate(modification_steps):
-            yield create_status_update("info", step, "implementation", 92 + i * 2)
-            await asyncio.sleep(0.3)
-        
-        # Step 7: Completion
+        # Step 8: Completion
         yield create_status_update("success", "Code processing completed successfully!", "complete", 100)
         
         # Final summary
+        end_time = int(time.time() * 1000)
+        duration_ms = end_time - int(time.time() * 1000) + 8000  # Rough estimate based on sleeps
+        
         summary = {
             "type": "summary",
-            "message": "Processing completed",
-            "timestamp": int(time.time() * 1000),
+            "message": "Processing completed successfully",
+            "timestamp": end_time,
             "summary": {
                 "repository": repo_name,
                 "prompt": prompt,
-                "files_modified": 3,
+                "files_read": len(existing_files),
+                "files_modified": files_modified,
                 "sandbox_id": sandbox.id,
-                "duration_ms": int(time.time() * 1000) - int(time.time() * 1000) + 5000  # Rough estimate
+                "duration_ms": duration_ms,
+                "steps_completed": [
+                    "sandbox_init",
+                    "validation", 
+                    "clone",
+                    "analysis",
+                    "reading",
+                    "planning", 
+                    "implementation",
+                    "complete"
+                ]
             }
         }
         yield summary
