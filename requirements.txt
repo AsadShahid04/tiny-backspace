@@ -1,8 +1,11 @@
 fastapi
 uvicorn
-sse-starlette
 e2b
 httpx
 loguru 
 python-dotenv 
 e2b-code-interpreter
+aiohttp  # For testing SSE endpoints
+anthropic  # For Claude AI integration
+openai  # For OpenAI integration
+PyGithub  # For GitHub API integration
