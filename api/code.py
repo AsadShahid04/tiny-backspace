@@ -1,10 +1,4 @@
-from http.server import BaseHTTPRequestHandler
 import json
-import sys
-import os
-
-# Add the parent directory to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def handler(request):
     """Vercel serverless function handler"""
