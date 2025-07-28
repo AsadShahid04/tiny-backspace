@@ -1,15 +1,15 @@
+from http.server import BaseHTTPRequestHandler
 import json
 
-def handler(request):
-    """Vercel serverless function handler"""
-    try:
-        # Parse request
-        if request.method == 'POST':
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        try:
             # Read request body
-            body = request.body.decode('utf-8')
-            request_data = json.loads(body)
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            request_data = json.loads(post_data.decode('utf-8'))
             
-            # Create a simple response for now
+            # Create response
             response_data = {
                 "status": "success",
                 "message": "API endpoint working!",
@@ -19,24 +19,26 @@ def handler(request):
                 }
             }
             
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                },
-                'body': json.dumps(response_data)
-            }
-        else:
-            return {
-                'statusCode': 405,
-                'body': json.dumps({"error": "Method not allowed"})
-            }
+            # Send response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.end_headers()
             
-    except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({"error": str(e)})
-        } 
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_response = {"error": str(e)}
+            self.wfile.write(json.dumps(error_response).encode('utf-8'))
+    
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers() 
