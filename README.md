@@ -4,12 +4,12 @@ A sandboxed coding agent that can create pull requests! 🚀
 
 ## 🌐 Public URL
 
-**Live Demo**: [https://tiny-backspace.onrender.com](https://tiny-backspace.onrender.com)
+**Live Demo**: [https://your-app-name.onrender.com](https://your-app-name.onrender.com) _(Replace with your actual URL)_
 
 You can test the API directly by sending a POST request to the public endpoint:
 
 ```bash
-curl -X POST "https://tiny-backspace.onrender.com/code" \
+curl -X POST "https://your-app-name.onrender.com/code" \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/your-username/your-repo",
