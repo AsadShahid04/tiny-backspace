@@ -1,2 +1,2 @@
-# Minimal requirements for Vercel function
-# No external dependencies needed for basic test 
+# Requirements for Vercel function
+requests>=2.31.0 
