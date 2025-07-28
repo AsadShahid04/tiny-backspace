@@ -71,12 +71,19 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### 5. Test Locally
 
 ```bash
+# Basic API test
 curl -X POST "http://localhost:8000/code" \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
     "prompt": "Add a simple test file"
   }'
+
+# Run comprehensive tests
+python -m pytest tests/
+
+# Start monitoring dashboard
+python tools/monitor_dashboard.py
 ```
 
 ## 🤖 Coding Agent Approach
@@ -250,23 +257,31 @@ curl -X POST "http://localhost:8000/code" \
 
 ```
 tiny-backspace/
-├── app/
-│   ├── api/
-│   │   └── routes.py          # API endpoints
-│   ├── services/
-│   │   ├── code_processor.py  # Main orchestration
-│   │   ├── agent_runner.py    # AI agent management
-│   │   └── github_pr_creator.py # GitHub integration
-│   ├── utils/
-│   │   └── sse.py            # Server-Sent Events
-│   ├── logging_config.py     # Logging setup
-│   └── main.py               # FastAPI app
-├── requirements.txt          # Dependencies
+├── app/                      # Main application code
+│   ├── api/                  # API endpoints
+│   ├── services/             # Business logic & AI integration
+│   ├── utils/                # Helper modules
+│   ├── logging_config.py     # Observability setup
+│   └── main.py               # FastAPI application
+├── tests/                    # Test files
+│   ├── test_simple.py        # Basic API tests
+│   ├── test_file_editing.py  # File editing tests
+│   ├── test_observability.py # Observability tests
+│   └── test_small_repo.py    # Small repo tests
+├── tools/                    # Monitoring & utilities
+│   └── monitor_dashboard.py  # Real-time monitoring
+├── scripts/                  # Development scripts
+│   └── sandbox_playground.py # E2B sandbox testing
+├── docs/                     # Documentation
+│   ├── DOCUMENTATION.md      # Complete technical docs
+│   └── IMPLEMENTATION_COMPLETE.md
+├── logs/                     # Application logs (auto-generated)
+├── requirements.txt          # Python dependencies
 ├── run_server.py            # Server startup script
-├── test_simple.py           # Quick tests
-├── test_file_editing.py     # Comprehensive tests
 └── README.md                # This file
 ```
+
+📋 **See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed structure overview**
 
 ## 🔄 Workflow
 
@@ -279,14 +294,52 @@ tiny-backspace/
 7. **Create PR**: Generate GitHub pull request
 8. **Cleanup**: Remove sandbox and temporary files
 
+## 🧪 Testing & Development
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific test categories
+python tests/test_simple.py          # Basic API tests
+python tests/test_file_editing.py    # File editing tests
+python tests/test_observability.py   # Observability tests
+python tests/test_small_repo.py      # Small repo tests
+
+# Run with verbose output
+python -m pytest tests/ -v
+```
+
+### Monitoring & Observability
+
+```bash
+# Start real-time monitoring dashboard
+python tools/monitor_dashboard.py
+
+# View logs
+tail -f logs/app.log
+tail -f logs/errors.log
+tail -f logs/performance.log
+tail -f logs/agent_thinking.log
+```
+
+### Development Scripts
+
+```bash
+# Test E2B sandbox functionality
+python scripts/sandbox_playground.py
+```
+
 ## 🚀 Development
 
 ### Adding New AI Providers
 
-1. Add provider to `agent_runner.py`
+1. Add provider to `app/services/agent_runner.py`
 2. Update fallback logic
 3. Add environment variable
-4. Update tests
+4. Update tests in `tests/` directory
 
 ### Extending Features
 
