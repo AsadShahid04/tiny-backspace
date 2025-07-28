@@ -40,12 +40,12 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             
             # Check if environment variables are set
-            github_token = os.getenv('GITHUB_TOKEN')
+            github_token = os.getenv('GITHUB_PAT') or os.getenv('GITHUB_TOKEN')
             anthropic_key = os.getenv('ANTHROPIC_API_KEY')
             openai_key = os.getenv('OPENAI_API_KEY')
             
             if not github_token:
-                self.wfile.write(f"data: {json.dumps({'type': 'error', 'message': 'GitHub token not configured. Please add GITHUB_TOKEN environment variable.'})}\n\n".encode('utf-8'))
+                self.wfile.write(f"data: {json.dumps({'type': 'error', 'message': 'GitHub token not configured. Please add GITHUB_PAT or GITHUB_TOKEN environment variable.'})}\n\n".encode('utf-8'))
                 return
             
             if not anthropic_key and not openai_key:
