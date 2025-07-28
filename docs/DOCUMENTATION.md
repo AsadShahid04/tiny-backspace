@@ -1199,14 +1199,14 @@ async def process_with_sandbox(repo_url: str, prompt: str):
 
 **Repository Link**: [https://github.com/AsadShahid04/tiny-backspace](https://github.com/AsadShahid04/tiny-backspace)
 
-**Public URL**: [https://tiny-backspace.onrender.com](https://tiny-backspace.onrender.com)
+**Public URL**: [https://asad-tiny-backspace.vercel.app](https://asad-tiny-backspace.vercel.app)
 
 ### README Requirements
 
 ✅ **How to hit the public URL**
 
 ```bash
-curl -X POST "https://tiny-backspace.onrender.com/code" \
+curl -X POST "https://asad-tiny-backspace.vercel.app/api/code" \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/your-username/your-repo",

@@ -4,12 +4,12 @@ A sandboxed coding agent that can create pull requests! 🚀
 
 ## 🌐 Public URL
 
-**Live Demo**: [https://your-app-name.vercel.app](https://your-app-name.vercel.app) _(Replace with your actual URL)_
+**Live Demo**: [https://asad-tiny-backspace.vercel.app](https://asad-tiny-backspace.vercel.app)
 
 You can test the API directly by sending a POST request to the public endpoint:
 
 ```bash
-curl -X POST "https://your-app-name.vercel.app/code" \
+curl -X POST "https://asad-tiny-backspace.vercel.app/api/code" \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/your-username/your-repo",
@@ -363,7 +363,7 @@ python scripts/sandbox_playground.py
    OPENAI_API_KEY = your_openai_key
    ```
 6. **Deploy automatically**
-7. **Get your public URL**: `https://your-app-name.vercel.app`
+7. **Get your public URL**: `https://asad-tiny-backspace.vercel.app`
 
 ### Other Platforms
 
