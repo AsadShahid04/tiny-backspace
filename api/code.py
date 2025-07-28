@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Import observability
+from api.observability import get_observability_manager
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -58,56 +61,56 @@ class handler(BaseHTTPRequestHandler):
             # Generate unique request ID
             request_id = str(uuid.uuid4())[:8]
             
-            def create_status_update(type_: str, message: str, step: str = None, progress: int = None, extra_data: dict = None) -> dict:
-                """Helper to create consistent status update objects."""
-                update = {
-                    "type": type_,
-                    "message": message,
-                    "timestamp": int(time.time() * 1000),
-                    "request_id": request_id
-                }
-                if step:
-                    update["step"] = step
-                if progress is not None:
-                    update["progress"] = progress
-                if extra_data:
-                    update["extra_data"] = extra_data
-                return update
+            # Initialize observability
+            obs = get_observability_manager()
+            obs.start_request(request_id, repo_url, prompt)
             
-            # Real processing flow
+            # Real processing flow with telemetry
             async def stream_processing():
                 try:
                     # Step 1: Initialize and validate
-                    yield create_status_update("info", "Initializing processing environment...", "init", 10)
+                    obs.log_agent_thinking("initialization", "Starting code processing request")
+                    yield obs.create_telemetry_update("info", "Initializing processing environment...", "init", 10)
                     await asyncio.sleep(0.5)
-                    yield create_status_update("success", "Environment initialized", "init", 20)
+                    
+                    with obs.performance_timer("environment_init"):
+                        yield obs.create_telemetry_update("success", "Environment initialized", "init", 20)
                     
                     # Step 2: Validate repository URL
-                    yield create_status_update("info", f"Validating repository URL: {repo_url}", "validation", 25)
+                    obs.log_agent_thinking("validation", f"Validating GitHub repository URL: {repo_url}")
+                    yield obs.create_telemetry_update("info", f"Validating repository URL: {repo_url}", "validation", 25)
                     await asyncio.sleep(0.5)
                     
-                    if not self._is_valid_github_url(repo_url):
-                        yield create_status_update("error", "Invalid GitHub URL provided", "validation", 25)
-                        return
+                    with obs.performance_timer("url_validation"):
+                        if not self._is_valid_github_url(repo_url):
+                            obs.log_agent_thinking("validation_error", "Invalid GitHub URL format detected")
+                            yield obs.create_telemetry_update("error", "Invalid GitHub URL provided", "validation", 25)
+                            return
                     
-                    yield create_status_update("success", "Repository URL validated", "validation", 30)
+                    obs.log_agent_thinking("validation_success", "Repository URL validation passed")
+                    yield obs.create_telemetry_update("success", "Repository URL validated", "validation", 30)
                     
                     # Step 3: Analyze repository
-                    yield create_status_update("info", "Analyzing repository structure...", "analysis", 40)
+                    obs.log_agent_thinking("analysis_start", "Beginning repository structure analysis")
+                    yield obs.create_telemetry_update("info", "Analyzing repository structure...", "analysis", 40)
                     await asyncio.sleep(1)
                     
-                    repo_info = await self._analyze_repository(repo_url, github_token)
-                    if not repo_info:
-                        yield create_status_update("error", "Failed to analyze repository", "analysis", 40)
-                        return
+                    with obs.performance_timer("repository_analysis"):
+                        repo_info = await self._analyze_repository(repo_url, github_token)
+                        if not repo_info:
+                            obs.log_agent_thinking("analysis_error", "Failed to analyze repository via GitHub API")
+                            yield obs.create_telemetry_update("error", "Failed to analyze repository", "analysis", 40)
+                            return
                     
-                    yield create_status_update("success", f"Repository analyzed: {repo_info['name']}", "analysis", 50, {
+                    obs.log_agent_thinking("analysis_complete", f"Repository analysis complete: {repo_info['name']} with {repo_info['file_count']} files")
+                    yield obs.create_telemetry_update("success", f"Repository analyzed: {repo_info['name']}", "analysis", 50, {
                         "repo_name": repo_info['name'],
                         "file_count": repo_info['file_count']
                     })
                     
                     # Step 4: AI Processing
-                    yield create_status_update("info", f"Processing prompt: '{prompt}'", "ai_processing", 60)
+                    obs.log_agent_thinking("ai_planning", f"Planning AI processing for prompt: '{prompt}'")
+                    yield obs.create_telemetry_update("info", f"Processing prompt: '{prompt}'", "ai_processing", 60)
                     await asyncio.sleep(1)
                     
                     # Try AI providers in order
@@ -116,56 +119,93 @@ class handler(BaseHTTPRequestHandler):
                     
                     if anthropic_key:
                         try:
-                            yield create_status_update("agent_thinking", "Using Claude AI for code analysis...", "ai_processing", 65)
-                            file_edits = await self._generate_with_claude(prompt, repo_info, anthropic_key)
+                            obs.log_agent_thinking("ai_provider_selection", "Attempting Claude AI for code analysis")
+                            yield obs.create_telemetry_update("agent_thinking", "Using Claude AI for code analysis...", "ai_processing", 65)
+                            
+                            with obs.performance_timer("claude_processing"):
+                                file_edits = await self._generate_with_claude(prompt, repo_info, anthropic_key, obs)
+                            
                             ai_provider = "claude"
-                            yield create_status_update("success", "Claude AI generated code modifications", "ai_processing", 70)
+                            obs.log_agent_thinking("ai_success", f"Claude AI successfully generated {len(file_edits)} file modifications")
+                            yield obs.create_telemetry_update("success", "Claude AI generated code modifications", "ai_processing", 70)
                         except Exception as e:
-                            yield create_status_update("agent_thinking", f"Claude failed: {str(e)}, trying OpenAI...", "ai_processing", 65)
+                            obs.log_agent_thinking("ai_fallback", f"Claude failed: {str(e)}, trying OpenAI...")
+                            yield obs.create_telemetry_update("agent_thinking", f"Claude failed: {str(e)}, trying OpenAI...", "ai_processing", 65)
                     
                     if not file_edits and openai_key:
                         try:
-                            yield create_status_update("agent_thinking", "Using OpenAI for code analysis...", "ai_processing", 70)
-                            file_edits = await self._generate_with_openai(prompt, repo_info, openai_key)
+                            obs.log_agent_thinking("ai_provider_selection", "Attempting OpenAI for code analysis")
+                            yield obs.create_telemetry_update("agent_thinking", "Using OpenAI for code analysis...", "ai_processing", 70)
+                            
+                            with obs.performance_timer("openai_processing"):
+                                file_edits = await self._generate_with_openai(prompt, repo_info, openai_key, obs)
+                            
                             ai_provider = "openai"
-                            yield create_status_update("success", "OpenAI generated code modifications", "ai_processing", 75)
+                            obs.log_agent_thinking("ai_success", f"OpenAI successfully generated {len(file_edits)} file modifications")
+                            yield obs.create_telemetry_update("success", "OpenAI generated code modifications", "ai_processing", 75)
                         except Exception as e:
-                            yield create_status_update("agent_thinking", f"OpenAI failed: {str(e)}, using fallback...", "ai_processing", 70)
+                            obs.log_agent_thinking("ai_fallback", f"OpenAI failed: {str(e)}, using fallback...")
+                            yield obs.create_telemetry_update("agent_thinking", f"OpenAI failed: {str(e)}, using fallback...", "ai_processing", 70)
                     
                     if not file_edits:
-                        yield create_status_update("agent_thinking", "Using fallback AI for basic modifications...", "ai_processing", 75)
-                        file_edits = self._generate_fallback_edits(prompt, repo_info)
+                        obs.log_agent_thinking("ai_fallback", "Using fallback AI for basic modifications")
+                        yield obs.create_telemetry_update("agent_thinking", "Using fallback AI for basic modifications...", "ai_processing", 75)
+                        
+                        with obs.performance_timer("fallback_processing"):
+                            file_edits = self._generate_fallback_edits(prompt, repo_info, obs)
+                        
                         ai_provider = "fallback"
-                        yield create_status_update("success", "Fallback AI generated basic modifications", "ai_processing", 80)
+                        obs.log_agent_thinking("ai_success", f"Fallback AI generated {len(file_edits)} basic modifications")
+                        yield obs.create_telemetry_update("success", "Fallback AI generated basic modifications", "ai_processing", 80)
                     
-                    yield create_status_update("success", f"Generated {len(file_edits)} file modifications", "ai_processing", 85, {
+                    obs.log_agent_thinking("ai_complete", f"AI processing complete with {len(file_edits)} modifications using {ai_provider}")
+                    yield obs.create_telemetry_update("success", f"Generated {len(file_edits)} file modifications", "ai_processing", 85, {
                         "edits_count": len(file_edits),
                         "ai_provider": ai_provider
                     })
                     
                     # Step 5: Create GitHub PR
-                    yield create_status_update("info", "Creating GitHub pull request...", "pr_creation", 90)
+                    obs.log_agent_thinking("pr_creation_start", "Starting GitHub pull request creation process")
+                    yield obs.create_telemetry_update("info", "Creating GitHub pull request...", "pr_creation", 90)
                     await asyncio.sleep(1)
                     
-                    pr_result = await self._create_github_pr(repo_url, prompt, file_edits, github_token)
+                    with obs.performance_timer("github_pr_creation"):
+                        pr_result = await self._create_github_pr(repo_url, prompt, file_edits, github_token, obs)
                     
                     if pr_result.get("success"):
-                        yield create_status_update("success", f"Pull request created: {pr_result['pr_url']}", "pr_creation", 100, {
+                        obs.log_agent_thinking("pr_success", f"Pull request created successfully: {pr_result['pr_url']}")
+                        yield obs.create_telemetry_update("success", f"Pull request created: {pr_result['pr_url']}", "pr_creation", 100, {
                             "pr_url": pr_result['pr_url'],
                             "branch_name": pr_result['branch_name']
                         })
                         
-                        yield create_status_update("success", "Processing completed successfully!", "complete", 100, {
+                        # Get thinking summary
+                        thinking_summary = obs.get_thinking_summary()
+                        obs.log_agent_thinking("completion", f"Request completed successfully with {thinking_summary['total_thoughts']} thinking steps")
+                        
+                        yield obs.create_telemetry_update("success", "Processing completed successfully!", "complete", 100, {
                             "pr_url": pr_result['pr_url'],
                             "total_duration_ms": 5000,
                             "successful_modifications": len(file_edits),
+                            "ai_provider": ai_provider,
+                            "thinking_summary": thinking_summary
+                        })
+                        
+                        # End request tracking
+                        obs.end_request(True, {
+                            "pr_url": pr_result['pr_url'],
+                            "edits_count": len(file_edits),
                             "ai_provider": ai_provider
                         })
                     else:
-                        yield create_status_update("error", f"Failed to create PR: {pr_result.get('error', 'Unknown error')}", "pr_creation", 100)
+                        obs.log_agent_thinking("pr_error", f"Failed to create PR: {pr_result.get('error', 'Unknown error')}")
+                        yield obs.create_telemetry_update("error", f"Failed to create PR: {pr_result.get('error', 'Unknown error')}", "pr_creation", 100)
+                        obs.end_request(False, {"error": pr_result.get('error')})
                     
                 except Exception as e:
-                    yield create_status_update("error", f"Processing failed: {str(e)}")
+                    obs.log_agent_thinking("error", f"Processing failed with error: {str(e)}")
+                    yield obs.create_telemetry_update("error", f"Processing failed: {str(e)}")
+                    obs.end_request(False, {"error": str(e)})
             
             # Run the async streaming function
             async def run_stream():
@@ -220,12 +260,14 @@ class handler(BaseHTTPRequestHandler):
             print(f"Error analyzing repository: {e}")
             return None
     
-    async def _generate_with_claude(self, prompt: str, repo_info: dict, api_key: str) -> list:
+    async def _generate_with_claude(self, prompt: str, repo_info: dict, api_key: str, obs) -> list:
         """Generate code edits using Claude API."""
         try:
             import requests
             
-            # Simple Claude API call
+            obs.log_agent_thinking("claude_prompt", f"Preparing Claude prompt for repository: {repo_info['full_name']}")
+            
+            # Enhanced Claude API call with detailed context
             headers = {
                 'x-api-key': api_key,
                 'content-type': 'application/json',
@@ -233,21 +275,27 @@ class handler(BaseHTTPRequestHandler):
             }
             
             message = f"""
-            Analyze this repository and generate code modifications based on the prompt.
+            You are an expert AI coding assistant. Analyze this repository and generate code modifications based on the user's prompt.
             
-            Repository: {repo_info['full_name']}
-            Description: {repo_info['description']}
-            File count: {repo_info['file_count']}
+            Repository Information:
+            - Name: {repo_info['full_name']}
+            - Description: {repo_info['description']}
+            - File count: {repo_info['file_count']}
             
-            User prompt: {prompt}
+            User Request: {prompt}
             
-            Generate file edits in this format:
+            Please analyze the repository structure and generate appropriate code modifications.
+            Focus on the most relevant files for the user's request.
+            
+            Generate file edits in this exact format:
             ```python:file_path
             new content here
             ```
             
-            Focus on the most relevant files for the prompt.
+            Be specific and provide meaningful improvements based on the user's prompt.
             """
+            
+            obs.log_agent_thinking("claude_request", "Sending request to Claude API")
             
             data = {
                 'model': 'claude-3-sonnet-20240229',
@@ -260,18 +308,26 @@ class handler(BaseHTTPRequestHandler):
             if response.status_code == 200:
                 result = response.json()
                 content = result['content'][0]['text']
-                return self._parse_ai_response(content)
+                
+                obs.log_agent_thinking("claude_response", f"Received Claude response: {len(content)} characters")
+                
+                edits = self._parse_ai_response(content)
+                obs.log_agent_thinking("claude_parsing", f"Parsed {len(edits)} file edits from Claude response")
+                
+                return edits
             else:
                 raise Exception(f"Claude API error: {response.status_code}")
                 
         except Exception as e:
-            print(f"Claude generation error: {e}")
+            obs.log_agent_thinking("claude_error", f"Claude generation failed: {str(e)}")
             return []
     
-    async def _generate_with_openai(self, prompt: str, repo_info: dict, api_key: str) -> list:
+    async def _generate_with_openai(self, prompt: str, repo_info: dict, api_key: str, obs) -> list:
         """Generate code edits using OpenAI API."""
         try:
             import requests
+            
+            obs.log_agent_thinking("openai_prompt", f"Preparing OpenAI prompt for repository: {repo_info['full_name']}")
             
             headers = {
                 'Authorization': f'Bearer {api_key}',
@@ -279,21 +335,27 @@ class handler(BaseHTTPRequestHandler):
             }
             
             message = f"""
-            Analyze this repository and generate code modifications based on the prompt.
+            You are an expert AI coding assistant. Analyze this repository and generate code modifications based on the user's prompt.
             
-            Repository: {repo_info['full_name']}
-            Description: {repo_info['description']}
-            File count: {repo_info['file_count']}
+            Repository Information:
+            - Name: {repo_info['full_name']}
+            - Description: {repo_info['description']}
+            - File count: {repo_info['file_count']}
             
-            User prompt: {prompt}
+            User Request: {prompt}
             
-            Generate file edits in this format:
+            Please analyze the repository structure and generate appropriate code modifications.
+            Focus on the most relevant files for the user's request.
+            
+            Generate file edits in this exact format:
             ```python:file_path
             new content here
             ```
             
-            Focus on the most relevant files for the prompt.
+            Be specific and provide meaningful improvements based on the user's prompt.
             """
+            
+            obs.log_agent_thinking("openai_request", "Sending request to OpenAI API")
             
             data = {
                 'model': 'gpt-4',
@@ -306,20 +368,29 @@ class handler(BaseHTTPRequestHandler):
             if response.status_code == 200:
                 result = response.json()
                 content = result['choices'][0]['message']['content']
-                return self._parse_ai_response(content)
+                
+                obs.log_agent_thinking("openai_response", f"Received OpenAI response: {len(content)} characters")
+                
+                edits = self._parse_ai_response(content)
+                obs.log_agent_thinking("openai_parsing", f"Parsed {len(edits)} file edits from OpenAI response")
+                
+                return edits
             else:
                 raise Exception(f"OpenAI API error: {response.status_code}")
                 
         except Exception as e:
-            print(f"OpenAI generation error: {e}")
+            obs.log_agent_thinking("openai_error", f"OpenAI generation failed: {str(e)}")
             return []
     
-    def _generate_fallback_edits(self, prompt: str, repo_info: dict) -> list:
+    def _generate_fallback_edits(self, prompt: str, repo_info: dict, obs) -> list:
         """Generate basic fallback edits."""
+        obs.log_agent_thinking("fallback_start", "Using fallback AI for basic modifications")
+        
         edits = []
         
         # Simple fallback based on prompt keywords
         if 'readme' in prompt.lower() or 'documentation' in prompt.lower():
+            obs.log_agent_thinking("fallback_readme", "Generating README documentation based on prompt keywords")
             edits.append({
                 'file_path': 'README.md',
                 'new_content': f"""# {repo_info['name']}
@@ -349,6 +420,7 @@ curl -X POST "https://your-api-url/api/code" \\
             })
         
         if 'api' in prompt.lower() or 'endpoint' in prompt.lower():
+            obs.log_agent_thinking("fallback_api", "Generating API endpoint improvements based on prompt keywords")
             edits.append({
                 'file_path': 'app/main.py',
                 'new_content': f"""# Enhanced API endpoints
@@ -362,6 +434,7 @@ def enhanced_endpoint():
                 'description': 'Enhanced API endpoints'
             })
         
+        obs.log_agent_thinking("fallback_complete", f"Fallback AI generated {len(edits)} basic modifications")
         return edits
     
     def _parse_ai_response(self, content: str) -> list:
@@ -381,10 +454,12 @@ def enhanced_endpoint():
         
         return edits
     
-    async def _create_github_pr(self, repo_url: str, prompt: str, file_edits: list, github_token: str) -> dict:
+    async def _create_github_pr(self, repo_url: str, prompt: str, file_edits: list, github_token: str, obs) -> dict:
         """Create GitHub PR with the generated changes."""
         try:
             import requests
+            
+            obs.log_agent_thinking("github_start", "Starting GitHub PR creation process")
             
             # Parse repo URL
             path_parts = urlparse(repo_url).path.strip('/').split('/')
@@ -393,6 +468,7 @@ def enhanced_endpoint():
             headers = {'Authorization': f'token {github_token}'}
             
             # Get default branch
+            obs.log_agent_thinking("github_info", "Fetching repository information")
             repo_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}', headers=headers)
             if repo_response.status_code != 200:
                 return {'success': False, 'error': 'Failed to get repository info'}
@@ -402,6 +478,7 @@ def enhanced_endpoint():
             
             # Create branch name
             branch_name = f"tiny-backspace-{int(time.time())}"
+            obs.log_agent_thinking("github_branch", f"Creating new branch: {branch_name}")
             
             # Get latest commit SHA
             branch_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}/branches/{default_branch}', headers=headers)
@@ -417,10 +494,15 @@ def enhanced_endpoint():
             if branch_response.status_code not in [200, 201]:
                 return {'success': False, 'error': f'Failed to create branch: {branch_response.text}'}
             
+            obs.log_agent_thinking("github_branch_success", f"Successfully created branch: {branch_name}")
+            
             # Apply file edits
-            for edit in file_edits:
+            obs.log_agent_thinking("github_files", f"Applying {len(file_edits)} file modifications")
+            for i, edit in enumerate(file_edits):
                 file_path = edit['file_path']
                 new_content = edit['new_content']
+                
+                obs.log_agent_thinking("github_file_edit", f"Processing file {i+1}/{len(file_edits)}: {file_path}")
                 
                 # Check if file exists
                 file_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}/contents/{file_path}', headers=headers, params={'ref': branch_name})
@@ -446,8 +528,11 @@ def enhanced_endpoint():
                 
                 if update_response.status_code not in [200, 201]:
                     return {'success': False, 'error': f'Failed to update file {file_path}'}
+                
+                obs.log_agent_thinking("github_file_success", f"Successfully updated file: {file_path}")
             
             # Create pull request
+            obs.log_agent_thinking("github_pr", "Creating pull request")
             pr_data = {
                 'title': f'🤖 AI-Generated Improvements: {prompt[:50]}...',
                 'body': f"""## AI-Generated Code Improvements
@@ -469,6 +554,7 @@ This pull request was automatically generated based on your request.
             
             if pr_response.status_code == 201:
                 pr_data = pr_response.json()
+                obs.log_agent_thinking("github_pr_success", f"Successfully created PR: {pr_data['html_url']}")
                 return {
                     'success': True,
                     'pr_url': pr_data['html_url'],
@@ -478,6 +564,7 @@ This pull request was automatically generated based on your request.
                 return {'success': False, 'error': f'Failed to create PR: {pr_response.text}'}
                 
         except Exception as e:
+            obs.log_agent_thinking("github_error", f"GitHub PR creation failed: {str(e)}")
             return {'success': False, 'error': str(e)}
     
     def do_OPTIONS(self):
