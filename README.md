@@ -177,6 +177,48 @@ We implemented a **dual-AI approach** with intelligent fallback mechanisms:
 
 1. **Claude (Anthropic)** - Primary choice for best quality
 2. **OpenAI GPT** - Fallback for high availability
+
+## 🔍 Observability & Monitoring
+
+Tiny Backspace includes comprehensive observability features to track agent behavior, performance, and system health:
+
+### **Real-Time Agent Thinking**
+
+- **Live Logging**: See what the agent is thinking in real-time
+- **Step-by-Step Tracking**: Monitor each decision and operation
+- **Context Preservation**: Maintain request correlation across all operations
+
+### **Performance Monitoring**
+
+- **Operation Timing**: Track performance of each step
+- **Bottleneck Detection**: Identify slow operations
+- **Resource Usage**: Monitor sandbox and API usage
+
+### **Error Tracking & Analysis**
+
+- **Structured Error Logging**: Detailed error context and stack traces
+- **Error Patterns**: Identify common failure modes
+- **Recovery Strategies**: Automatic fallback mechanisms
+
+### **Health Monitoring**
+
+```bash
+# Generate health report
+python monitor_dashboard.py --health-report
+
+# Real-time monitoring dashboard
+python monitor_dashboard.py
+
+# Test observability features
+python test_observability.py
+```
+
+### **Log Analysis**
+
+- **Structured Logs**: JSON-formatted logs for easy parsing
+- **Log Rotation**: Automatic log management and compression
+- **Multi-level Logging**: Debug, Info, Error, and Performance logs
+
 3. **Dummy Agent** - Final fallback for basic functionality
 
 ## 🧪 Testing
