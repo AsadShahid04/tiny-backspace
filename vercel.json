@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "functions": {
+    "api/code.py": {
+      "runtime": "python3.9"
+    }
+  },
+  "routes": [
+    {
+      "src": "/code",
+      "dest": "/api/code.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": "."
+  }
+} 

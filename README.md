@@ -4,12 +4,12 @@ A sandboxed coding agent that can create pull requests! 🚀
 
 ## 🌐 Public URL
 
-**Live Demo**: [https://your-app-name.onrender.com](https://your-app-name.onrender.com) _(Replace with your actual URL)_
+**Live Demo**: [https://your-app-name-production.up.railway.app](https://your-app-name-production.up.railway.app) _(Replace with your actual URL)_
 
 You can test the API directly by sending a POST request to the public endpoint:
 
 ```bash
-curl -X POST "https://your-app-name.onrender.com/code" \
+curl -X POST "https://your-app-name-production.up.railway.app/code" \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/your-username/your-repo",
@@ -350,15 +350,24 @@ python scripts/sandbox_playground.py
 
 ## 🌍 Deployment
 
-### Render (Current)
+### Railway (Recommended - 100% Free, No Credit Card)
 
-- Automatic deployment from GitHub
-- Environment variables configured
-- HTTPS enabled
-- Auto-scaling
+1. **Go to [railway.app](https://railway.app)**
+2. **Click "Start a New Project"**
+3. **Choose "Deploy from GitHub repo"**
+4. **Select your repository**: `AsadShahid04/tiny-backspace`
+5. **Add environment variables**:
+   ```
+   GITHUB_TOKEN = your_github_token
+   ANTHROPIC_API_KEY = your_anthropic_key
+   OPENAI_API_KEY = your_openai_key
+   ```
+6. **Deploy automatically**
+7. **Get your public URL**: `https://your-app-name-production.up.railway.app`
 
 ### Other Platforms
 
+- **Render**: Automatic deployment from GitHub
 - **Heroku**: Add `Procfile`
 - **AWS**: Use Elastic Beanstalk
 - **GCP**: Use Cloud Run
