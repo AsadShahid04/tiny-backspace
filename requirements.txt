@@ -2,10 +2,11 @@ fastapi
 uvicorn
 e2b
 httpx
-loguru 
-python-dotenv 
+loguru
+python-dotenv
 e2b-code-interpreter
 aiohttp  # For testing SSE endpoints
 anthropic  # For Claude AI integration
 openai  # For OpenAI integration
 PyGithub  # For GitHub API integration
+langsmith  # For AI observability and tracing

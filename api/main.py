@@ -75,114 +75,150 @@ class TinyBackspaceProcessor:
         sandbox = None
         try:
             # Step 1: Initialize and validate
+            self.obs.log_agent_thinking("initialization", "Starting Tiny Backspace processing pipeline")
             yield self._create_sse_update("info", "Initializing processing environment...", "init", 10)
             await asyncio.sleep(0.5)
             
             # Validate environment variables
+            self.obs.log_agent_thinking("validation", "Validating environment variables and API keys")
             github_token = os.getenv('GITHUB_PAT') or os.getenv('GITHUB_TOKEN')
             anthropic_key = os.getenv('ANTHROPIC_API_KEY')
             e2b_api_key = os.getenv('E2B_API_KEY')
             
             if not all([github_token, anthropic_key, e2b_api_key]):
+                self.obs.log_agent_thinking("error", "Missing required environment variables - cannot proceed")
                 yield self._create_sse_update("error", "Missing required environment variables", "init", 10)
                 return
             
             # Step 2: Validate repository URL
+            self.obs.log_agent_thinking("validation", f"Validating GitHub repository URL: {repo_url}")
             yield self._create_sse_update("info", f"Validating repository URL: {repo_url}", "validation", 20)
             await asyncio.sleep(0.5)
             
             if not self._is_valid_github_url(str(repo_url)):
+                self.obs.log_agent_thinking("error", f"Invalid GitHub URL format: {repo_url}")
                 yield self._create_sse_update("error", "Invalid GitHub URL provided", "validation", 20)
                 return
             
+            self.obs.log_agent_thinking("validation", "Repository URL validation successful")
             yield self._create_sse_update("success", "Repository URL validated", "validation", 25)
             
             # Step 3: Create secure sandbox
+            self.obs.log_agent_thinking("sandbox", "Creating secure E2B sandbox environment for code execution")
             yield self._create_sse_update("info", "Creating secure sandbox environment...", "sandbox", 30)
             await asyncio.sleep(1)
             
             sandbox = await self._create_sandbox()
             if not sandbox:
+                self.obs.log_agent_thinking("error", "Failed to create E2B sandbox - cannot proceed with code execution")
                 yield self._create_sse_update("error", "Failed to create sandbox environment", "sandbox", 30)
                 return
             
+            self.obs.log_agent_thinking("sandbox", f"E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
             yield self._create_sse_update("success", "Secure sandbox environment ready", "sandbox", 35)
             
             # Step 4: Clone repository into sandbox
+            self.obs.log_agent_thinking("clone", f"Cloning repository {repo_url} into sandbox for analysis")
             yield self._create_sse_update("info", "Cloning repository into sandbox...", "clone", 40)
             await asyncio.sleep(1)
             
             clone_success = await self._clone_repository(sandbox, str(repo_url))
             if not clone_success:
+                self.obs.log_agent_thinking("error", f"Failed to clone repository {repo_url} - cannot analyze code")
                 yield self._create_sse_update("error", "Failed to clone repository", "clone", 40)
                 return
             
+            self.obs.log_agent_thinking("clone", "Repository successfully cloned into sandbox")
             yield self._create_sse_update("success", "Repository cloned into sandbox", "clone", 45)
             
             # Step 5: Setup Claude Code in sandbox
+            self.obs.log_agent_thinking("claude_setup", "Setting up Claude Code AI agent in sandbox environment")
             yield self._create_sse_update("info", "Setting up Claude Code...", "claude_setup", 50)
             await asyncio.sleep(1)
             
             claude_ready = await self._setup_claude_code(sandbox, anthropic_key)
             if not claude_ready:
+                self.obs.log_agent_thinking("error", "Failed to setup Claude Code - AI agent not available")
                 yield self._create_sse_update("error", "Failed to setup Claude Code", "claude_setup", 50)
                 return
             
+            self.obs.log_agent_thinking("claude_setup", "Claude Code AI agent successfully installed and ready")
             yield self._create_sse_update("success", "Claude Code ready in sandbox", "claude_setup", 55)
             
             # Step 6: Analyze repository structure
+            self.obs.log_agent_thinking("analysis", "Analyzing repository structure and identifying relevant files")
             yield self._create_sse_update("info", "Analyzing repository structure...", "analysis", 60)
             await asyncio.sleep(1)
             
             repo_info = await self._analyze_repository_in_sandbox(sandbox)
             if not repo_info:
+                self.obs.log_agent_thinking("error", "Failed to analyze repository structure - cannot proceed with modifications")
                 yield self._create_sse_update("error", "Failed to analyze repository", "analysis", 60)
                 return
             
+            self.obs.log_agent_thinking("analysis", f"Repository analysis complete: {repo_info['file_count']} files found")
+            
             # Step 7: Read repository files (Tool: Read format)
+            self.obs.log_agent_thinking("file_reading", "Reading key repository files to understand codebase structure")
             for file_path in repo_info.get('files', [])[:5]:  # Read first 5 files
+                self.obs.log_agent_thinking("file_reading", f"Reading file: {file_path}")
                 yield self._create_tool_read_update(file_path)
                 await asyncio.sleep(0.2)
             
+            self.obs.log_agent_thinking("analysis", f"Analyzing {repo_info['file_count']} files to determine optimal modifications")
             yield self._create_ai_message_update(f"Found {repo_info['file_count']} files in repository. Analyzing structure for modifications.")
             
             # Step 8: Generate code with Claude Code
+            self.obs.log_agent_thinking("ai_processing", f"Processing user prompt with Claude Code: '{prompt}'")
             yield self._create_ai_message_update(f"Processing prompt: '{prompt}'")
             await asyncio.sleep(1)
             
+            self.obs.log_agent_thinking("ai_processing", "Generating code modifications based on repository analysis and user requirements")
             file_edits = await self._generate_with_claude_code(sandbox, prompt, repo_info)
             if not file_edits:
+                self.obs.log_agent_thinking("error", "Claude Code failed to generate meaningful code modifications")
                 yield self._create_sse_update("error", "Failed to generate code modifications", "claude_processing", 70)
                 return
             
+            self.obs.log_agent_thinking("ai_processing", f"Claude Code generated {len(file_edits)} file modifications")
+            
             # Step 9: Apply changes in sandbox (Tool: Edit format)
+            self.obs.log_agent_thinking("code_application", f"Applying {len(file_edits)} AI-generated modifications to repository files")
             for edit in file_edits:
                 file_path = edit['file_path']
                 new_content = edit['new_content']
                 
+                self.obs.log_agent_thinking("code_application", f"Applying modification to {file_path}")
                 # For now, we'll use empty old_str since we don't have the original content
                 yield self._create_tool_edit_update(file_path, "", new_content)
                 await asyncio.sleep(0.3)
             
+            self.obs.log_agent_thinking("code_application", f"Successfully applied {len(file_edits)} file modifications")
             yield self._create_ai_message_update(f"Applied {len(file_edits)} file modifications successfully.")
             
             # Step 10: Create GitHub PR (Tool: Bash format)
+            self.obs.log_agent_thinking("git_operations", "Preparing to create GitHub pull request with modifications")
             branch_name = f"tiny-backspace-{int(time.time())}"
             
+            self.obs.log_agent_thinking("git_operations", f"Creating new branch: {branch_name}")
             yield self._create_tool_bash_update(f"git checkout -b {branch_name}", f"Switched to a new branch '{branch_name}'")
             await asyncio.sleep(0.2)
             
+            self.obs.log_agent_thinking("git_operations", "Staging all modified files")
             yield self._create_tool_bash_update("git add .", "")
             await asyncio.sleep(0.2)
             
             commit_message = f"Add {prompt[:30]}..."
+            self.obs.log_agent_thinking("git_operations", f"Committing changes with message: {commit_message}")
             yield self._create_tool_bash_update(f"git commit -m '{commit_message}'", f"[{branch_name} abc123] {commit_message}")
             await asyncio.sleep(0.2)
             
+            self.obs.log_agent_thinking("git_operations", f"Pushing branch {branch_name} to remote repository")
             yield self._create_tool_bash_update(f"git push origin {branch_name}", f"To {repo_url}")
             await asyncio.sleep(0.2)
             
             # Step 11: Create GitHub PR
+            self.obs.log_agent_thinking("pr_creation", "Creating GitHub pull request with AI-generated modifications")
             yield self._create_sse_update("info", "Creating GitHub pull request...", "pr_creation", 90)
             await asyncio.sleep(1)
             
@@ -192,11 +228,13 @@ class TinyBackspaceProcessor:
                 pr_title = f"Add {prompt[:30]}..."
                 pr_body = f"Added {len(file_edits)} file modifications based on the prompt: '{prompt}'"
                 
+                self.obs.log_agent_thinking("pr_creation", f"Pull request created successfully: {pr_result['pr_url']}")
                 yield self._create_tool_bash_update(
                     f"gh pr create --title '{pr_title}' --body '{pr_body}'", 
                     pr_result['pr_url']
                 )
                 
+                self.obs.log_agent_thinking("success", f"Tiny Backspace processing completed successfully! Created PR with {len(file_edits)} modifications")
                 yield self._create_sse_update("success", "Processing completed successfully!", "complete", 100, {
                     "pr_url": pr_result['pr_url'],
                     "total_duration_ms": 5000,
@@ -211,6 +249,7 @@ class TinyBackspaceProcessor:
                     "ai_provider": "claude_code"
                 })
             else:
+                self.obs.log_agent_thinking("error", f"Failed to create pull request: {pr_result.get('error', 'Unknown error')}")
                 yield self._create_sse_update("error", f"Failed to create PR: {pr_result.get('error', 'Unknown error')}", "pr_creation", 95)
                 self.obs.end_request(False, {"error": pr_result.get('error')})
             
