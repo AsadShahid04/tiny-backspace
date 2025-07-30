@@ -8,6 +8,18 @@ I built Tiny Backspace as an autonomous coding agent that takes a GitHub repo UR
 
 **Live Demo**: [https://asad-tiny-backspace.vercel.app](https://asad-tiny-backspace.vercel.app)
 
+### **✅ Recent Implementation Success**
+
+The system has been successfully tested and is fully functional:
+
+- **✅ FastAPI Server**: Running with Server-Sent Events streaming
+- **✅ E2B Sandbox**: Secure sandboxed execution working
+- **✅ Claude Code**: AI agent generating meaningful code modifications
+- **✅ GitHub Integration**: Automatic PR creation verified
+- **✅ Real-time Streaming**: Progress updates working perfectly
+
+**Latest Test Results**: Successfully created PR #12 with logging functionality for the tiny-backspace repository!
+
 ## 🚀 **Quick Start**
 
 ### **Test the Live API**
@@ -21,7 +33,25 @@ curl -X POST "https://asad-tiny-backspace.vercel.app/api/code" \
   }'
 ```
 
-### **Run Locally**
+### **Run Locally (FastAPI Server)**
+
+```bash
+# Start the FastAPI server
+python api/main.py
+
+# Test the server
+curl -X GET "http://localhost:8000/health"
+
+# Test the main endpoint
+curl -X POST "http://localhost:8000/code" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
+    "prompt": "Add a simple logging feature to track API requests"
+  }' --no-buffer
+```
+
+### **Run Locally (Legacy Vercel Functions)**
 
 ```bash
 # Clone and setup
@@ -37,7 +67,7 @@ pip install -r requirements.txt
 cp .env.example .env  # Edit with your API keys
 
 # Start server
-python run_server.py
+python api/main.py
 
 # Test locally
 curl -X POST "http://localhost:8000/code" \
@@ -50,27 +80,24 @@ curl -X POST "http://localhost:8000/code" \
 
 ## 🤖 **AI Agent Approach**
 
-I chose a **three-tier hybrid approach** with intelligent fallbacks to ensure reliability and quality:
+I chose **Claude Code (Anthropic)** as the primary AI agent for this implementation:
 
-### **Primary: Claude (Anthropic)**
+### **Primary: Claude Code (Anthropic)**
 
 - **Why**: Superior reasoning for complex code analysis and context understanding
 - **Strengths**: Best code generation quality, reduced hallucinations, advanced pattern recognition
+- **Model**: `claude-3-5-sonnet-20241022` (latest stable version)
 - **Use Case**: Primary choice for all code modifications
+- **Integration**: Runs directly in E2B sandbox environment
 
-### **Fallback: OpenAI GPT**
+### **Implementation Details**
 
-- **Why**: High availability and fast response times for quick iterations
-- **Strengths**: ~2-3 second response times, cost-effective scaling, proven reliability
-- **Use Case**: Backup when Claude is unavailable
+- **Sandboxed Execution**: Claude Code runs securely in E2B sandbox
+- **Repository Analysis**: Automatically analyzes repository structure
+- **File Parsing**: Intelligently parses AI responses into file modifications
+- **Error Handling**: Graceful fallbacks and comprehensive error management
 
-### **Final Fallback: Dummy Agent**
-
-- **Why**: Ensures the system never fails completely, even during API outages
-- **Strengths**: Always available, instant response, zero cost
-- **Use Case**: When both AI providers are unavailable
-
-**Why This Approach?** It provides enterprise-grade reliability through multiple fallbacks, optimizes for quality (Claude) and performance (OpenAI), and ensures consistent user experience regardless of external API status.
+**Why This Approach?** Claude Code provides the best balance of code quality, reasoning capabilities, and reliability for autonomous coding tasks. The sandboxed execution ensures security while maintaining full functionality.
 
 ## 🔍 **How It Works**
 
@@ -162,13 +189,21 @@ LANGSMITH_API_KEY=your_langsmith_key
 ## 🧪 **Testing & Development**
 
 ```bash
-# Run comprehensive tests
-python -m pytest tests/
+# Test the complete workflow
+python test_full_workflow.py
 
-# Start monitoring dashboard
-python tools/monitor_dashboard.py
+# Test the FastAPI server
+python api/main.py
 
-# Check Langsmith traces
+# Test with curl
+curl -X POST "http://localhost:8000/code" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
+    "prompt": "Add a simple logging feature to track API requests"
+  }' --no-buffer
+
+# Check Langsmith traces (if configured)
 # Visit: https://smith.langchain.com/
 ```
 
@@ -189,13 +224,14 @@ python tools/monitor_dashboard.py
 
 ```
 tiny-backspace/
-├── api/                    # Vercel functions
-├── app/                    # Main application
-│   ├── services/           # AI integration & GitHub
-│   └── utils/              # Helper modules
-├── tests/                  # Test suite
-├── tools/                  # Monitoring & utilities
-└── docs/                   # Documentation
+├── api/                    # FastAPI server and Vercel functions
+│   ├── main.py            # FastAPI server with SSE streaming
+│   ├── code.py            # Legacy Vercel function
+│   └── simple_observability.py  # Observability module
+├── test_full_workflow.py  # Complete workflow test
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables
+└── README.md             # This file
 ```
 
 ---

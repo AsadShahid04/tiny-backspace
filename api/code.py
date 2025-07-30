@@ -260,96 +260,67 @@ class handler(BaseHTTPRequestHandler):
     async def _create_sandbox(self, obs):
         """Create a secure E2B sandbox environment."""
         try:
-            import requests
+            from e2b import Sandbox
             
             obs.log_agent_thinking("sandbox_create", "Creating E2B sandbox with Python environment")
             
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
-            
-            data = {
-                'template': 'base',
-                'metadata': {
+            # Create sandbox using E2B SDK
+            sandbox = await Sandbox.create(
+                template="base",
+                metadata={
                     'type': 'tiny_backspace_sandbox',
                     'request_id': obs.request_id
                 }
-            }
+            )
             
-            response = requests.post('https://api.e2b.dev/v1/sandbox', headers=headers, json=data)
-            
-            if response.status_code == 201:
-                sandbox_data = response.json()
-                obs.log_agent_thinking("sandbox_created", f"Sandbox created with ID: {sandbox_data['sandbox_id']}")
-                return sandbox_data['sandbox_id']
-            else:
-                obs.log_agent_thinking("sandbox_error", f"Failed to create sandbox: {response.text}")
-                return None
+            obs.log_agent_thinking("sandbox_created", f"Sandbox created with ID: {sandbox.sandbox_id}")
+            return sandbox
                 
         except Exception as e:
             obs.log_agent_thinking("sandbox_exception", f"Exception creating sandbox: {str(e)}")
             return None
     
-    async def _clone_repository(self, sandbox_id, repo_url, obs):
+    async def _clone_repository(self, sandbox, repo_url, obs):
         """Clone repository into the sandbox."""
         try:
-            import requests
-            
             obs.log_agent_thinking("clone_start", f"Cloning repository: {repo_url}")
             
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
+            # Clone the repository using E2B SDK
+            process = await sandbox.process.start(
+                cmd=f'git clone {repo_url} repo',
+                cwd='/home/user'
+            )
             
-            # Clone the repository
-            clone_cmd = {
-                'cmd': f'git clone {repo_url} repo',
-                'cwd': '/home/user'
-            }
+            await process.wait()
             
-            response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=clone_cmd)
-            
-            if response.status_code == 200:
+            if process.exit_code == 0:
                 obs.log_agent_thinking("clone_success", "Repository cloned successfully")
                 return True
             else:
-                obs.log_agent_thinking("clone_failed", f"Failed to clone repository: {response.text}")
+                obs.log_agent_thinking("clone_failed", f"Failed to clone repository: {process.stderr}")
                 return False
                 
         except Exception as e:
             obs.log_agent_thinking("clone_exception", f"Exception cloning repository: {str(e)}")
             return False
     
-    async def _setup_claude_code(self, sandbox_id, anthropic_key, obs):
+    async def _setup_claude_code(self, sandbox, anthropic_key, obs):
         """Setup Claude Code in the sandbox environment."""
         try:
-            import requests
-            
             obs.log_agent_thinking("claude_setup_start", "Setting up Claude Code environment")
             
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
-            
-            # Install Claude Code
+            # Install required packages using E2B SDK
             setup_commands = [
-                {
-                    'cmd': 'pip install anthropic',
-                    'cwd': '/home/user'
-                },
-                {
-                    'cmd': 'pip install requests',
-                    'cwd': '/home/user'
-                }
+                'pip install anthropic',
+                'pip install requests'
             ]
             
             for cmd in setup_commands:
-                response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=cmd)
-                if response.status_code != 200:
-                    obs.log_agent_thinking("claude_setup_failed", f"Failed to setup Claude Code: {response.text}")
+                process = await sandbox.process.start(cmd=cmd, cwd='/home/user')
+                await process.wait()
+                
+                if process.exit_code != 0:
+                    obs.log_agent_thinking("claude_setup_failed", f"Failed to setup Claude Code: {process.stderr}")
                     return False
             
             obs.log_agent_thinking("claude_setup_success", "Claude Code environment setup complete")
@@ -359,29 +330,21 @@ class handler(BaseHTTPRequestHandler):
             obs.log_agent_thinking("claude_setup_exception", f"Exception setting up Claude Code: {str(e)}")
             return False
     
-    async def _analyze_repository_in_sandbox(self, sandbox_id, obs):
+    async def _analyze_repository_in_sandbox(self, sandbox, obs):
         """Analyze repository structure in the sandbox."""
         try:
-            import requests
-            
             obs.log_agent_thinking("analysis_start", "Analyzing repository structure in sandbox")
             
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
+            # Get repository structure using E2B SDK
+            process = await sandbox.process.start(
+                cmd='find repo -type f -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.md" -o -name "*.txt" | head -20',
+                cwd='/home/user'
+            )
             
-            # Get repository structure
-            cmd = {
-                'cmd': 'find repo -type f -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.md" -o -name "*.txt" | head -20',
-                'cwd': '/home/user'
-            }
+            await process.wait()
             
-            response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=cmd)
-            
-            if response.status_code == 200:
-                result = response.json()
-                files = result.get('stdout', '').strip().split('\n') if result.get('stdout') else []
+            if process.exit_code == 0:
+                files = process.stdout.strip().split('\n') if process.stdout else []
                 
                 repo_info = {
                     'name': 'repository',
@@ -392,24 +355,17 @@ class handler(BaseHTTPRequestHandler):
                 obs.log_agent_thinking("analysis_success", f"Repository analysis complete: {len(files)} files found")
                 return repo_info
             else:
-                obs.log_agent_thinking("analysis_failed", f"Failed to analyze repository: {response.text}")
+                obs.log_agent_thinking("analysis_failed", f"Failed to analyze repository: {process.stderr}")
                 return None
                 
         except Exception as e:
             obs.log_agent_thinking("analysis_exception", f"Exception analyzing repository: {str(e)}")
             return None
     
-    async def _generate_with_claude_code(self, sandbox_id, prompt, repo_info, obs):
+    async def _generate_with_claude_code(self, sandbox, prompt, repo_info, obs):
         """Generate code modifications using Claude Code in the sandbox."""
         try:
-            import requests
-            
             obs.log_agent_thinking("claude_generation_start", f"Starting code generation with Claude Code for prompt: {prompt}")
-            
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
             
             # Create Python script for Claude Code
             claude_script = f'''
@@ -456,65 +412,44 @@ print(json.dumps({{
 }}))
 '''
             
-            # Write script to sandbox
-            write_cmd = {
-                'cmd': f'echo \'{claude_script}\' > claude_code.py',
-                'cwd': '/home/user'
-            }
+            # Write script to sandbox using E2B SDK
+            await sandbox.filesystem.write('/home/user/claude_code.py', claude_script)
             
-            response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=write_cmd)
+            # Execute Claude Code using E2B SDK
+            process = await sandbox.process.start(
+                cmd='python claude_code.py',
+                cwd='/home/user'
+            )
             
-            if response.status_code != 200:
-                obs.log_agent_thinking("claude_script_write_failed", "Failed to write Claude Code script")
-                return []
+            await process.wait()
             
-            # Execute Claude Code
-            exec_cmd = {
-                'cmd': 'python claude_code.py',
-                'cwd': '/home/user'
-            }
-            
-            response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=exec_cmd)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('stdout'):
-                    try:
-                        claude_response = json.loads(result['stdout'])
-                        content = claude_response.get('content', '')
-                        
-                        obs.log_agent_thinking("claude_response_received", f"Received Claude response: {len(content)} characters")
-                        
-                        # Parse the response into file edits
-                        edits = self._parse_ai_response(content)
-                        obs.log_agent_thinking("claude_parsing_success", f"Parsed {len(edits)} file edits from Claude response")
-                        
-                        return edits
-                    except json.JSONDecodeError:
-                        obs.log_agent_thinking("claude_json_error", "Failed to parse Claude response as JSON")
-                        return []
-                else:
-                    obs.log_agent_thinking("claude_no_output", "Claude Code produced no output")
+            if process.exit_code == 0 and process.stdout:
+                try:
+                    claude_response = json.loads(process.stdout)
+                    content = claude_response.get('content', '')
+                    
+                    obs.log_agent_thinking("claude_response_received", f"Received Claude response: {len(content)} characters")
+                    
+                    # Parse the response into file edits
+                    edits = self._parse_ai_response(content)
+                    obs.log_agent_thinking("claude_parsing_success", f"Parsed {len(edits)} file edits from Claude response")
+                    
+                    return edits
+                except json.JSONDecodeError:
+                    obs.log_agent_thinking("claude_json_error", "Failed to parse Claude response as JSON")
                     return []
             else:
-                obs.log_agent_thinking("claude_execution_failed", f"Failed to execute Claude Code: {response.text}")
+                obs.log_agent_thinking("claude_no_output", f"Claude Code produced no output or failed: {process.stderr}")
                 return []
                 
         except Exception as e:
             obs.log_agent_thinking("claude_generation_exception", f"Exception in Claude Code generation: {str(e)}")
             return []
     
-    async def _apply_changes_in_sandbox(self, sandbox_id, file_edits, obs):
+    async def _apply_changes_in_sandbox(self, sandbox, file_edits, obs):
         """Apply the generated changes in the sandbox."""
         try:
-            import requests
-            
             obs.log_agent_thinking("apply_start", f"Applying {len(file_edits)} file modifications in sandbox")
-            
-            headers = {
-                'Authorization': f'Bearer {os.getenv("E2B_API_KEY")}',
-                'Content-Type': 'application/json'
-            }
             
             for i, edit in enumerate(file_edits):
                 file_path = edit['file_path']
@@ -522,17 +457,9 @@ print(json.dumps({{
                 
                 obs.log_agent_thinking("apply_file", f"Applying modification {i+1}/{len(file_edits)}: {file_path}")
                 
-                # Write the new content to the file
-                write_cmd = {
-                    'cmd': f'echo \'{new_content}\' > repo/{file_path}',
-                    'cwd': '/home/user'
-                }
-                
-                response = requests.post(f'https://api.e2b.dev/v1/sandbox/{sandbox_id}/cmd', headers=headers, json=write_cmd)
-                
-                if response.status_code != 200:
-                    obs.log_agent_thinking("apply_file_failed", f"Failed to apply changes to {file_path}")
-                    return False
+                # Write the new content to the file using E2B SDK
+                full_path = f'/home/user/repo/{file_path}'
+                await sandbox.filesystem.write(full_path, new_content)
             
             obs.log_agent_thinking("apply_success", "All file modifications applied successfully")
             return True
@@ -541,7 +468,7 @@ print(json.dumps({{
             obs.log_agent_thinking("apply_exception", f"Exception applying changes: {str(e)}")
             return False
     
-    async def _create_github_pr_from_sandbox(self, sandbox_id, repo_url, prompt, file_edits, github_token, obs):
+    async def _create_github_pr_from_sandbox(self, sandbox, repo_url, prompt, file_edits, github_token, obs):
         """Create GitHub PR from the sandbox changes."""
         try:
             import requests
