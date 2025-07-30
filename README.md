@@ -110,8 +110,8 @@ I chose a **three-tier hybrid approach** with intelligent fallbacks to ensure re
 
 ## 🛠️ **Key Features**
 
-- **🔒 Sandboxed Execution**: Isolated code processing for security
-- **🤖 Multi-AI Integration**: Claude + OpenAI + fallback for reliability
+- **🔒 E2B Sandboxed Execution**: Secure, isolated environment for code processing
+- **🤖 Claude Code Integration**: Real AI coding agent running in sandbox
 - **🔗 GitHub Automation**: Automatic PR creation with AI-generated descriptions
 - **📡 Real-Time Streaming**: Server-Sent Events for live progress updates
 - **📊 Comprehensive Observability**: Langsmith traces + performance telemetry
@@ -122,6 +122,9 @@ I chose a **three-tier hybrid approach** with intelligent fallbacks to ensure re
 ### **Required Environment Variables**
 
 ```env
+# Required for sandboxed execution
+E2B_API_KEY=your_e2b_api_key
+
 # AI Providers (at least one required)
 ANTHROPIC_API_KEY=your_claude_key
 OPENAI_API_KEY=your_openai_key
@@ -135,24 +138,25 @@ LANGSMITH_API_KEY=your_langsmith_key
 
 **API Key Sources:**
 
-- GitHub PAT: https://github.com/settings/tokens (repo scope)
-- OpenAI: https://platform.openai.com/api-keys
-- Anthropic: https://console.anthropic.com/
-- Langsmith: https://smith.langchain.com/ (free tier)
+- **E2B**: https://e2b.dev/ (sandboxed execution)
+- **GitHub PAT**: https://github.com/settings/tokens (repo scope)
+- **OpenAI**: https://platform.openai.com/api-keys
+- **Anthropic**: https://console.anthropic.com/
+- **Langsmith**: https://smith.langchain.com/ (free tier)
 
 ## 🏗️ **Architecture**
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Client        │    │   FastAPI       │    │   AI Agents     │
-│   (Frontend)    │◄──►│   Backend       │◄──►│  (Claude/OpenAI)│
+│   Client        │    │   API Backend   │    │   E2B Sandbox   │
+│   (Frontend)    │◄──►│   (Vercel)      │◄──►│  (Claude Code)  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │   GitHub API    │
-                       │  (PR Creation)  │
-                       └─────────────────┘
+                              │                        │
+                              ▼                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   GitHub API    │    │   Repository    │
+                       │  (PR Creation)  │    │   (Cloned)      │
+                       └─────────────────┘    └─────────────────┘
 ```
 
 ## 🧪 **Testing & Development**
