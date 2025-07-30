@@ -17,6 +17,47 @@ curl -X POST "https://asad-tiny-backspace.vercel.app/api/code" \
   }'
 ```
 
+## 🔍 **Real-Time Observability**
+
+### **Langsmith Dashboard**
+
+- **URL**: https://smith.langchain.com/
+- **Features**: Real-time AI agent thinking process, performance metrics, request flows
+- **What you'll see**: Complete traces of agent reasoning, step-by-step decision making
+
+### **Streaming Telemetry**
+
+The API streams detailed real-time updates including:
+
+- **Agent thinking steps** (24+ per request)
+- **Performance metrics** for each operation
+- **Real-time progress indicators**
+- **Complete request timeline** with timestamps
+
+### **Example Response**
+
+```json
+{
+  "type": "success",
+  "message": "Processing completed successfully!",
+  "telemetry": {
+    "thinking_logs_count": 25,
+    "performance_metrics_count": 5,
+    "langsmith_enabled": true,
+    "recent_thoughts": [
+      { "step": "ai_planning", "thought": "Planning AI processing..." },
+      { "step": "github_pr", "thought": "Creating pull request..." }
+    ]
+  },
+  "extra_data": {
+    "pr_url": "https://github.com/user/repo/pull/123",
+    "total_duration_ms": 5000,
+    "successful_modifications": 1,
+    "ai_provider": "openai"
+  }
+}
+```
+
 ## 🏃‍♂️ Quick Start (Local Development)
 
 ### Prerequisites
@@ -56,6 +97,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # GitHub Integration (for PR creation)
 GITHUB_PAT=your_github_personal_access_token_here
+
+# Observability (Langsmith)
+LANGSMITH_API_KEY=your_langsmith_api_key_here
 ```
 
 ### 4. Run Locally
@@ -358,9 +402,10 @@ python scripts/sandbox_playground.py
 4. **Configure project** (auto-detects Python)
 5. **Add environment variables**:
    ```
-   GITHUB_TOKEN = your_github_token
+   GITHUB_PAT = your_github_token
    ANTHROPIC_API_KEY = your_anthropic_key
    OPENAI_API_KEY = your_openai_key
+   LANGSMITH_API_KEY = your_langsmith_key
    ```
 6. **Deploy automatically**
 7. **Get your public URL**: `https://asad-tiny-backspace.vercel.app`
