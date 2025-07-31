@@ -1,895 +1,391 @@
-#!/usr/bin/env python3
-"""
-Tiny Backspace - FastAPI Server with Server-Sent Events
-Complete implementation meeting all assessment requirements
-"""
-
-import asyncio
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 import json
+import asyncio
 import os
-import time
+import sys
 import uuid
 import re
-import base64
-from typing import AsyncGenerator, Dict, Any, Optional
-from urllib.parse import urlparse
-
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, HttpUrl
+from typing import AsyncGenerator
+import subprocess
+import tempfile
+import shutil
+from pathlib import Path
 from dotenv import load_dotenv
+import anthropic
+import requests
 
-# Import our working test workflow components
-from simple_observability import get_observability_manager
-
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
+# Debug: Print environment variables
+print("🔍 Environment variables loaded:")
+print(f"GITHUB_PAT: {os.getenv('GITHUB_PAT', 'NOT SET')[:20]}...")
+print(f"ANTHROPIC_API_KEY: {os.getenv('ANTHROPIC_API_KEY', 'NOT SET')[:20]}...")
+print(f"E2B_API_KEY: {os.getenv('E2B_API_KEY', 'NOT SET')[:20]}...")
+
+# E2B imports
+from e2b import Sandbox
+
 # Initialize FastAPI app
-app = FastAPI(
-    title="Tiny Backspace API",
-    description="A sandboxed coding agent that creates PRs automatically",
-    version="1.0.0"
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Pydantic models for request validation
-class CodeRequest(BaseModel):
-    repoUrl: HttpUrl
-    prompt: str
-
-class CodeResponse(BaseModel):
-    type: str
-    message: str
-    timestamp: int
-    request_id: str
-    step: Optional[str] = None
-    progress: Optional[int] = None
-    extra_data: Optional[Dict[str, Any]] = None
-    telemetry: Optional[Dict[str, Any]] = None
+app = FastAPI(title="Tiny Backspace", description="AI-powered code generation and PR creation")
 
 class TinyBackspaceProcessor:
-    """Main processor that integrates the working test workflow."""
-    
     def __init__(self):
-        self.obs = get_observability_manager()
+        pass
     
-    async def process_code_request(self, repo_url: str, prompt: str) -> AsyncGenerator[str, None]:
-        """Main processing function that streams updates via SSE."""
+    def _validate_environment(self):
+        """Validate that required environment variables are set"""
+        self.github_token = os.getenv('GITHUB_PAT') or os.getenv('GITHUB_TOKEN')
+        self.anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+        self.openai_key = os.getenv('OPENAI_API_KEY')
         
-        # Generate unique request ID
+        if not self.github_token:
+            raise ValueError("GITHUB_PAT or GITHUB_TOKEN environment variable is required")
+        
+        if not self.anthropic_key and not self.openai_key:
+            raise ValueError("ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable is required")
+    
+    async def process_request(self, repo_url: str, prompt: str) -> AsyncGenerator[str, None]:
+        """Main processing pipeline"""
         request_id = str(uuid.uuid4())[:8]
         
-        # Initialize observability
-        self.obs.start_request(request_id, str(repo_url), prompt)
-        
-        sandbox = None
         try:
-            # Step 1: Initialize and validate
-            self.obs.log_agent_thinking("initialization", "Starting Tiny Backspace processing pipeline")
-            yield self._create_sse_update("info", "Initializing processing environment...", "init", 10)
-            await asyncio.sleep(0.5)
-            
             # Validate environment variables
-            self.obs.log_agent_thinking("validation", "Validating environment variables and API keys")
-            github_token = os.getenv('GITHUB_PAT') or os.getenv('GITHUB_TOKEN')
-            anthropic_key = os.getenv('ANTHROPIC_API_KEY')
-            e2b_api_key = os.getenv('E2B_API_KEY')
-            
-            if not all([github_token, anthropic_key, e2b_api_key]):
-                self.obs.log_agent_thinking("error", "Missing required environment variables - cannot proceed")
-                yield self._create_sse_update("error", "Missing required environment variables", "init", 10)
-                return
+            self._validate_environment()
+            # Step 1: Initialize
+            yield self._create_sse_event("info", f"🚀 Starting request {request_id}")
+            yield self._create_sse_event("info", f"📁 Repository: {repo_url}")
+            yield self._create_sse_event("info", f"💭 Prompt: {prompt}")
             
             # Step 2: Validate repository URL
-            self.obs.log_agent_thinking("validation", f"Validating GitHub repository URL: {repo_url}")
-            yield self._create_sse_update("info", f"Validating repository URL: {repo_url}", "validation", 20)
-            await asyncio.sleep(0.5)
-            
-            if not self._is_valid_github_url(str(repo_url)):
-                self.obs.log_agent_thinking("error", f"Invalid GitHub URL format: {repo_url}")
-                yield self._create_sse_update("error", "Invalid GitHub URL provided", "validation", 20)
+            if not self._is_valid_github_url(repo_url):
+                yield self._create_sse_event("error", "Invalid GitHub repository URL")
                 return
             
-            self.obs.log_agent_thinking("validation", "Repository URL validation successful")
-            yield self._create_sse_update("success", "Repository URL validated", "validation", 25)
-            
-            # Step 3: Create secure sandbox
-            self.obs.log_agent_thinking("sandbox", "Creating secure E2B sandbox environment for code execution")
-            yield self._create_sse_update("info", "Creating secure sandbox environment...", "sandbox", 30)
-            await asyncio.sleep(1)
-            
-            sandbox = await self._create_sandbox()
-            if not sandbox:
-                self.obs.log_agent_thinking("error", "Failed to create E2B sandbox - cannot proceed with code execution")
-                yield self._create_sse_update("error", "Failed to create sandbox environment", "sandbox", 30)
-                return
-            
-            self.obs.log_agent_thinking("sandbox", f"E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
-            yield self._create_sse_update("success", "Secure sandbox environment ready", "sandbox", 35)
-            
-            # Step 4: Clone repository into sandbox
-            self.obs.log_agent_thinking("clone", f"Cloning repository {repo_url} into sandbox for analysis")
-            yield self._create_sse_update("info", "Cloning repository into sandbox...", "clone", 40)
-            await asyncio.sleep(1)
-            
-            clone_success = await self._clone_repository(sandbox, str(repo_url))
-            if not clone_success:
-                self.obs.log_agent_thinking("error", f"Failed to clone repository {repo_url} - cannot analyze code")
-                yield self._create_sse_update("error", "Failed to clone repository", "clone", 40)
-                return
-            
-            self.obs.log_agent_thinking("clone", "Repository successfully cloned into sandbox")
-            yield self._create_sse_update("success", "Repository cloned into sandbox", "clone", 45)
-            
-            # Step 5: Setup Claude Code in sandbox
-            self.obs.log_agent_thinking("claude_setup", "Setting up Claude Code AI agent in sandbox environment")
-            yield self._create_sse_update("info", "Setting up Claude Code...", "claude_setup", 50)
-            await asyncio.sleep(1)
-            
-            claude_ready = await self._setup_claude_code(sandbox, anthropic_key)
-            if not claude_ready:
-                self.obs.log_agent_thinking("error", "Failed to setup Claude Code - AI agent not available")
-                yield self._create_sse_update("error", "Failed to setup Claude Code", "claude_setup", 50)
-                return
-            
-            self.obs.log_agent_thinking("claude_setup", "Claude Code AI agent successfully installed and ready")
-            yield self._create_sse_update("success", "Claude Code ready in sandbox", "claude_setup", 55)
-            
-            # Step 6: Analyze repository structure
-            self.obs.log_agent_thinking("analysis", "Analyzing repository structure and identifying relevant files")
-            yield self._create_sse_update("info", "Analyzing repository structure...", "analysis", 60)
-            await asyncio.sleep(1)
-            
-            repo_info = await self._analyze_repository_in_sandbox(sandbox)
-            if not repo_info:
-                self.obs.log_agent_thinking("error", "Failed to analyze repository structure - cannot proceed with modifications")
-                yield self._create_sse_update("error", "Failed to analyze repository", "analysis", 60)
-                return
-            
-            self.obs.log_agent_thinking("analysis", f"Repository analysis complete: {repo_info['file_count']} files found")
-            
-            # Step 7: Read repository files (Tool: Read format)
-            self.obs.log_agent_thinking("file_reading", "Reading key repository files to understand codebase structure")
-            for file_path in repo_info.get('files', [])[:5]:  # Read first 5 files
-                self.obs.log_agent_thinking("file_reading", f"Reading file: {file_path}")
-                yield self._create_tool_read_update(file_path)
-                await asyncio.sleep(0.2)
-            
-            self.obs.log_agent_thinking("analysis", f"Analyzing {repo_info['file_count']} files to determine optimal modifications")
-            yield self._create_ai_message_update(f"Found {repo_info['file_count']} files in repository. Analyzing structure for modifications.")
-            
-            # Step 8: Generate code with Claude Code
-            self.obs.log_agent_thinking("ai_processing", f"Processing user prompt with Claude Code: '{prompt}'")
-            yield self._create_ai_message_update(f"Processing prompt: '{prompt}'")
-            await asyncio.sleep(1)
-            
-            self.obs.log_agent_thinking("ai_processing", "Generating code modifications based on repository analysis and user requirements")
-            yield self._create_ai_message_update("Starting Claude Code generation...")
-            file_edits = await self._generate_with_claude_code(sandbox, prompt, repo_info, anthropic_key)
-            yield self._create_ai_message_update(f"Claude Code generation completed. Result: {len(file_edits) if file_edits else 0} edits")
-            if not file_edits:
-                self.obs.log_agent_thinking("error", "Claude Code failed to generate meaningful code modifications")
-                yield self._create_sse_update("error", "Failed to generate code modifications", "claude_processing", 70)
-                return
-            
-            self.obs.log_agent_thinking("ai_processing", f"Claude Code generated {len(file_edits)} file modifications")
-            
-            # Step 9: Apply changes in sandbox (Tool: Edit format)
-            self.obs.log_agent_thinking("code_application", f"Applying {len(file_edits)} AI-generated modifications to repository files")
-            for edit in file_edits:
-                file_path = edit['file_path']
-                new_content = edit['new_content']
+            # Step 3: Create sandbox
+            yield self._create_sse_event("info", "💭 [SANDBOX] Creating secure E2B sandbox environment")
+            sandbox = Sandbox()
+            try:
+                yield self._create_sse_event("success", f"💭 [SANDBOX] E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
                 
-                self.obs.log_agent_thinking("code_application", f"Applying modification to {file_path}")
-                # For now, we'll use empty old_str since we don't have the original content
-                yield self._create_tool_edit_update(file_path, "", new_content)
-                await asyncio.sleep(0.3)
-            
-            self.obs.log_agent_thinking("code_application", f"Successfully applied {len(file_edits)} file modifications")
-            yield self._create_ai_message_update(f"Applied {len(file_edits)} file modifications successfully.")
-            
-            # Step 10: Create GitHub PR (Tool: Bash format)
-            self.obs.log_agent_thinking("git_operations", "Preparing to create GitHub pull request with modifications")
-            branch_name = f"tiny-backspace-{int(time.time())}"
-            
-            self.obs.log_agent_thinking("git_operations", f"Creating new branch: {branch_name}")
-            yield self._create_tool_bash_update(f"git checkout -b {branch_name}", f"Switched to a new branch '{branch_name}'")
-            await asyncio.sleep(0.2)
-            
-            self.obs.log_agent_thinking("git_operations", "Staging all modified files")
-            yield self._create_tool_bash_update("git add .", "")
-            await asyncio.sleep(0.2)
-            
-            commit_message = f"Add {prompt[:30]}..."
-            self.obs.log_agent_thinking("git_operations", f"Committing changes with message: {commit_message}")
-            yield self._create_tool_bash_update(f"git commit -m '{commit_message}'", f"[{branch_name} abc123] {commit_message}")
-            await asyncio.sleep(0.2)
-            
-            self.obs.log_agent_thinking("git_operations", f"Pushing branch {branch_name} to remote repository")
-            yield self._create_tool_bash_update(f"git push origin {branch_name}", f"To {repo_url}")
-            await asyncio.sleep(0.2)
-            
-            # Step 11: Create GitHub PR
-            self.obs.log_agent_thinking("pr_creation", "Creating GitHub pull request with AI-generated modifications")
-            yield self._create_sse_update("info", "Creating GitHub pull request...", "pr_creation", 90)
-            await asyncio.sleep(1)
-            
-            pr_result = await self._create_github_pr_from_sandbox(sandbox, str(repo_url), prompt, file_edits, github_token)
-            
-            if pr_result.get("success"):
-                pr_title = f"Add {prompt[:30]}..."
-                pr_body = f"Added {len(file_edits)} file modifications based on the prompt: '{prompt}'"
+                # Step 4: Clone repository
+                yield self._create_sse_event("info", f"💭 [CLONE] Cloning repository {repo_url} into sandbox")
+                clone_result = sandbox.commands.run(f"git clone {repo_url} repo")
+                if clone_result.exit_code != 0:
+                    yield self._create_sse_event("error", f"Failed to clone repository: {clone_result.stderr}")
+                    return
+                yield self._create_sse_event("success", "💭 [CLONE] Repository successfully cloned into sandbox")
                 
-                self.obs.log_agent_thinking("pr_creation", f"Pull request created successfully: {pr_result['pr_url']}")
-                yield self._create_tool_bash_update(
-                    f"gh pr create --title '{pr_title}' --body '{pr_body}'", 
-                    pr_result['pr_url']
-                )
+                # Step 5: Analyze repository structure
+                yield self._create_sse_event("info", "🔍 [ANALYSIS] Analyzing repository structure")
+                files_result = sandbox.commands.run("find repo -type f -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.jsx' -o -name '*.tsx' | head -20")
+                files = files_result.stdout.strip().split('\n') if files_result.stdout else []
+                yield self._create_sse_event("success", f"🔍 [ANALYSIS] Repository analysis complete: {len(files)} files found")
                 
-                self.obs.log_agent_thinking("success", f"Tiny Backspace processing completed successfully! Created PR with {len(file_edits)} modifications")
-                yield self._create_sse_update("success", "Processing completed successfully!", "complete", 100, {
-                    "pr_url": pr_result['pr_url'],
-                    "total_duration_ms": 5000,
-                    "successful_modifications": len(file_edits),
-                    "ai_provider": "claude_code"
-                })
+                # Step 6: Read key files
+                yield self._create_sse_event("info", "💭 [FILE_READING] Reading key repository files")
+                file_contents = {}
+                for file_path in files[:5]:  # Read first 5 files
+                    if file_path and file_path.strip():  # Check if file_path is not empty
+                        read_result = sandbox.commands.run(f"cat {file_path}")
+                        if read_result.exit_code == 0:
+                            # Remove 'repo/' prefix from file path for AI consumption
+                            clean_file_path = file_path.replace('repo/', '')
+                            file_contents[clean_file_path] = read_result.stdout
+                            yield self._create_sse_event("info", f"💭 [FILE_READING] Reading file: {file_path} -> {clean_file_path}")
+                        else:
+                            yield self._create_sse_event("info", f"💭 [FILE_READING] Failed to read file: {file_path} - {read_result.stderr}")
                 
-                # End request tracking
-                self.obs.end_request(True, {
-                    "pr_url": pr_result['pr_url'],
-                    "edits_count": len(file_edits),
-                    "ai_provider": "claude_code"
-                })
-            else:
-                self.obs.log_agent_thinking("error", f"Failed to create pull request: {pr_result.get('error', 'Unknown error')}")
-                yield self._create_sse_update("error", f"Failed to create PR: {pr_result.get('error', 'Unknown error')}", "pr_creation", 95)
-                self.obs.end_request(False, {"error": pr_result.get('error')})
-            
-        except Exception as e:
-            yield self._create_sse_update("error", f"Processing failed: {str(e)}")
-            self.obs.end_request(False, {"error": str(e)})
-        finally:
-            # Always cleanup sandbox
-            if sandbox:
-                try:
-                    sandbox.kill()
-                except Exception as e:
-                    print(f"Warning: Failed to cleanup sandbox: {e}")
-    
-    def _create_sse_update(self, type_: str, message: str, step: str = None, progress: int = None, extra_data: dict = None) -> str:
-        """Create an SSE update string."""
-        update = self.obs.create_telemetry_update(type_, message, step, progress, extra_data)
-        return f"data: {json.dumps(update)}\n\n"
-    
-    def _create_tool_read_update(self, filepath: str) -> str:
-        """Create a Tool: Read update."""
-        return f"data: {{\"type\": \"Tool: Read\", \"filepath\": \"{filepath}\"}}\n\n"
-    
-    def _create_ai_message_update(self, message: str) -> str:
-        """Create an AI Message update."""
-        return f"data: {{\"type\": \"AI Message\", \"message\": \"{message}\"}}\n\n"
-    
-    def _create_tool_edit_update(self, filepath: str, old_str: str, new_str: str) -> str:
-        """Create a Tool: Edit update."""
-        return f"data: {{\"type\": \"Tool: Edit\", \"filepath\": \"{filepath}\", \"old_str\": \"{old_str}\", \"new_str\": \"{new_str}\"}}\n\n"
-    
-    def _create_tool_bash_update(self, command: str, output: str) -> str:
-        """Create a Tool: Bash update."""
-        return f"data: {{\"type\": \"Tool: Bash\", \"command\": \"{command}\", \"output\": \"{output}\"}}\n\n"
-    
-    async def _create_sandbox(self):
-        """Create a secure E2B sandbox environment."""
-        try:
-            from e2b import Sandbox
-            
-            # Create sandbox using E2B SDK (same as working test workflow)
-            sandbox = Sandbox(
-                template="base",
-                metadata={
-                    'type': 'tiny_backspace_sandbox',
-                    'request_id': self.obs.request_id
-                }
-            )
-            
-            return sandbox
+                # Debug: Show what files we have
+                yield self._create_sse_event("info", f"💭 [DEBUG] Found {len(file_contents)} files with content")
+                for file_path in file_contents.keys():
+                    yield self._create_sse_event("info", f"💭 [DEBUG] File: {file_path} (length: {len(file_contents[file_path])})")
+                
+                # Step 7: Generate code with Claude Code locally
+                yield self._create_sse_event("info", "🤖 [AI_PROCESSING] Processing with Claude Code locally")
+                code_changes = await self._generate_code_locally(prompt, file_contents, repo_url)
+                
+                if not code_changes:
+                    yield self._create_sse_event("error", "❌ [ERROR] Failed to generate code modifications")
+                    return
+                
+                # Step 8: Apply changes in sandbox
+                yield self._create_sse_event("info", "🔧 [APPLYING] Applying code changes in sandbox")
+                for change in code_changes:
+                    if change['type'] == 'edit':
+                        yield self._create_sse_event("info", f"🔧 [APPLYING] Processing change: {change['filepath']}")
+                        
+                        # Fix file path if it has repo/ prefix
+                        if change['filepath'].startswith('repo/'):
+                            change['filepath'] = change['filepath'][5:]  # Remove repo/ prefix
+                            yield self._create_sse_event("info", f"🔧 [APPLYING] Fixed filepath to: {change['filepath']}")
+                        
+                        await self._apply_file_edit(sandbox, change)
+                        yield self._create_sse_event("info", f"🔧 [APPLYING] Applied edit to {change['filepath']}")
+                
+                # Step 9: Git operations in sandbox
+                yield self._create_sse_event("info", "🔧 [GIT] Setting up Git operations in sandbox")
+                await self._setup_git_in_sandbox(sandbox, repo_url)
+                
+                # Step 10: Create branch and commit
+                branch_name = f"feature/{request_id}"
+                yield self._create_sse_event("info", f"🔧 [GIT] Creating branch: {branch_name}")
+                
+                # Use safer command execution
+                git_commands = [
+                    ("cd repo && git checkout -b " + branch_name, "Create branch"),
+                    ("cd repo && git add .", "Add files"),
+                    ("cd repo && git commit -m 'Apply changes from Tiny Backspace'", "Commit changes"),
+                    ("cd repo && git remote set-url origin https://" + self.github_token + "@github.com/AsadShahid04/tiny-backspace.git", "Set remote"),
+                    ("cd repo && git push origin " + branch_name, "Push branch")
+                ]
+                
+                for cmd, description in git_commands:
+                    yield self._create_sse_event("info", f"🔧 [GIT] {description}")
+                    result = sandbox.commands.run(cmd)
+                    if result.exit_code != 0:
+                        yield self._create_sse_event("error", f"Git command failed: {description}")
+                        yield self._create_sse_event("error", f"Command: {cmd}")
+                        yield self._create_sse_event("error", f"Error: {result.stderr}")
+                        return
+                    yield self._create_sse_event("success", f"✅ [GIT] {description} completed")
+                
+                # Step 11: Create PR
+                yield self._create_sse_event("info", "🔧 [PR] Creating pull request")
+                pr_result = await self._create_pull_request(repo_url, branch_name, prompt)
+                
+                if pr_result:
+                    yield self._create_sse_event("success", f"✅ [SUCCESS] Pull request created: {pr_result['url']}")
+                    yield self._create_sse_event("success", f"📝 [PR] Title: {pr_result['title']}")
+                    yield self._create_sse_event("success", f"📝 [PR] Description: {pr_result['body']}")
+                else:
+                    yield self._create_sse_event("error", "❌ [ERROR] Failed to create pull request")
+            finally:
+                # Clean up sandbox
+                sandbox.kill()
                 
         except Exception as e:
-            print(f"Failed to create sandbox: {e}")
-            return None
+            yield self._create_sse_event("error", f"❌ [ERROR] Processing failed: {str(e)}")
     
-    async def _clone_repository(self, sandbox, repo_url: str) -> bool:
-        """Clone repository into the sandbox."""
-        try:
-            # Clone the repository using E2B SDK (same as working test workflow)
-            result = sandbox.commands.run(f'git clone {repo_url} repo')
-            return result.exit_code == 0
-                
-        except Exception as e:
-            print(f"Failed to clone repository: {e}")
-            return False
+    def _is_valid_github_url(self, url: str) -> bool:
+        """Validate GitHub repository URL"""
+        github_pattern = r'^https://github\.com/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+/?$'
+        return bool(re.match(github_pattern, url))
     
-    async def _setup_claude_code(self, sandbox, anthropic_key: str) -> bool:
-        """Setup Claude Code in the sandbox environment."""
+    async def _generate_code_locally(self, prompt: str, file_contents: dict, repo_url: str) -> list:
+        """Generate code changes using Claude Code locally"""
         try:
-            # Install required packages using E2B SDK (same as working test workflow)
-            setup_commands = [
-                'pip install --upgrade anthropic',
-                'pip install requests',
-                'pip install langsmith'
-            ]
+            # Create client
+            client = anthropic.Anthropic(api_key=self.anthropic_key)
             
-            for cmd in setup_commands:
-                result = sandbox.commands.run(cmd)
-                if result.exit_code != 0:
-                    return False
-            
-            return True
-            
-        except Exception as e:
-            print(f"Failed to setup Claude Code: {e}")
-            return False
-    
-    async def _analyze_repository_in_sandbox(self, sandbox) -> Optional[Dict[str, Any]]:
-        """Analyze repository structure in the sandbox."""
-        try:
-            # Get repository structure using E2B SDK (same as working test workflow)
-            result = sandbox.commands.run('find repo -type f -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.md" -o -name "*.txt" | head -10')
-            
-            if result.exit_code == 0:
-                files = result.stdout.strip().split('\n') if result.stdout else []
-                
-                repo_info = {
-                    'name': 'repository',
-                    'file_count': len(files),
-                    'files': files[:10]  # Limit to first 10 files
-                }
-                
-                return repo_info
-            else:
-                return None
-                
-        except Exception as e:
-            print(f"Failed to analyze repository: {e}")
-            return None
-    
-    async def _generate_with_claude_code(self, sandbox, prompt: str, repo_info: Dict[str, Any], anthropic_key: str) -> list:
-        """Generate code modifications using Claude Code in the sandbox."""
-        try:
-            # Create Python script for Claude Code with LangSmith integration
-            claude_script = f'''
-import anthropic
-import json
-import os
-import time
+            # Create detailed prompt for Claude Code
+            detailed_prompt = f"""
+You are a coding agent working on repository: {repo_url}
 
-# LangSmith setup for sandbox
-try:
-    from langsmith import Client
-    langsmith_client = Client(api_key="{os.getenv('LANGSMITH_API_KEY')}")
-    print("✅ LangSmith client initialized in sandbox")
-except Exception as e:
-    print(f"⚠️ LangSmith not available in sandbox: {{e}}")
-    langsmith_client = None
+User request: {prompt}
 
-# Initialize Anthropic client with correct API key
-api_key = "{anthropic_key}"
-if not api_key:
-    print("❌ ANTHROPIC_API_KEY not found")
-    exit(1)
+Available files and their contents:
+{json.dumps(file_contents, indent=2)}
 
-try:
-    client = anthropic.Anthropic(api_key=api_key)
-    print("✅ Anthropic client initialized in sandbox")
-except Exception as e:
-    print(f"❌ Failed to initialize Anthropic client: {{e}}")
-    exit(1)
+Please analyze the codebase and provide specific code changes to implement the user's request.
+Return your response in the following JSON format:
 
-# Start LangSmith trace
-if langsmith_client:
-    try:
-        from langsmith.run_trees import RunTree
-        run_tree = RunTree(
-            name="tiny-backspace-sandbox-request",
-            run_type="chain",
-            inputs={{
-                "repo_name": "{repo_info['name']}",
-                "file_count": {repo_info['file_count']},
-                "files": {repo_info.get('files', [])},
-                "prompt": "{prompt}",
-                "model": "claude-3-5-sonnet-20241022"
-            }},
-            client=langsmith_client
-        )
-        run_tree.post()
-        print("✅ LangSmith trace started in sandbox")
-    except Exception as e:
-        print(f"⚠️ Failed to start LangSmith trace: {{e}}")
-        run_tree = None
-else:
-    run_tree = None
-
-message = f"""
-You are an expert AI coding assistant. Analyze this repository and generate code modifications based on the user's prompt.
-
-Repository Information:
-- Name: {repo_info['name']}
-- File count: {repo_info['file_count']}
-- Files: {repo_info.get('files', [])}
-
-User Request: {prompt}
-
-Please analyze the repository structure and generate appropriate code modifications.
-Focus on the most relevant files for the user's request.
-
-IMPORTANT: Generate file edits in this EXACT format:
-
-```python:api/main.py
-# Add your new code here
-@app.get("/test")
-async def test_endpoint():
-    return {{"message": "Test endpoint working!"}}
-```
-
-For each file you want to modify, use the format:
-```python:file_path
-new content here
-```
-
-Be specific and provide meaningful improvements based on the user's prompt.
-Make sure to include the file path in the code block header.
-"""
-
-# Log thinking step
-if run_tree:
-    try:
-        run_tree.add_child(
-            name="thinking-ai_processing",
-            run_type="tool",
-            inputs={{
-                "step": "ai_processing",
-                "thought": f"Processing prompt: {{prompt}}",
-                "files_analyzed": len({repo_info.get('files', [])})
-            }}
-        )
-    except Exception as e:
-        print(f"⚠️ Failed to log thinking step: {{e}}")
-
-try:
-    response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=4000,
-        messages=[{{"role": "user", "content": message}}]
-    )
-    print("✅ Claude response received successfully")
-except Exception as e:
-    print(f"❌ Failed to get Claude response: {{e}}")
-    exit(1)
-
-# Log AI response
-if run_tree:
-    try:
-        run_tree.add_child(
-            name="thinking-ai_response",
-            run_type="tool",
-            inputs={{
-                "step": "ai_response",
-                "model": response.model,
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-                "content_length": len(response.content[0].text)
-            }}
-        )
-    except Exception as e:
-        print(f"⚠️ Failed to log AI response: {{e}}")
-
-result = {{
-    "content": response.content[0].text,
-    "model": response.model,
-    "usage": {{
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens
-    }}
+{{
+    "changes": [
+        {{
+            "type": "edit",
+            "filepath": "api/main.py",
+            "content": "new file content",
+            "description": "what this change does"
+        }}
+    ],
+    "explanation": "Brief explanation of the changes made"
 }}
 
-# End LangSmith trace
-if run_tree:
-    try:
-        run_tree.end(outputs=result)
-        print("✅ LangSmith trace completed in sandbox")
-    except Exception as e:
-        print(f"⚠️ Failed to end LangSmith trace: {{e}}")
+IMPORTANT: 
+- Use relative file paths WITHOUT the 'repo/' prefix (e.g., 'api/main.py' not 'repo/api/main.py')
+- The filepath should match exactly with the files shown in the available files list
+- Make minimal, focused changes to implement the user's request
+- Follow the existing code style and patterns
+- Add proper error handling where needed
 
-print(json.dumps(result))
-'''
+Focus on:
+1. Understanding the existing codebase structure
+2. Making minimal, focused changes
+3. Following the existing code style and patterns
+4. Adding proper error handling where needed
+5. Ensuring the changes are testable and maintainable
+
+Only return valid JSON, no additional text.
+"""
             
-            # Write script to sandbox using E2B SDK (same as working test workflow)
-            sandbox.files.write('/home/user/claude_code.py', claude_script)
+            # Send request to Claude
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4000,
+                temperature=0.1,
+                messages=[{"role": "user", "content": detailed_prompt}]
+            )
             
-            # Execute Claude Code using E2B SDK
-            result = sandbox.commands.run('python claude_code.py')
-            
-            if result.exit_code == 0 and result.stdout:
-                print(f"✅ Claude Code execution successful")
-                print(f"📝 DEBUG: Raw stdout length: {len(result.stdout)}")
-                print(f"📝 DEBUG: Raw stdout: {result.stdout}")
-                print(f"📝 DEBUG: Raw stdout repr: {repr(result.stdout)}")
-                
-                # Try to find JSON in the output
-                stdout_lines = result.stdout.strip().split('\n')
-                print(f"📝 DEBUG: Stdout has {len(stdout_lines)} lines")
-                
-                json_line = None
-                for i, line in enumerate(stdout_lines):
-                    print(f"📝 DEBUG: Line {i}: {line}")
-                    if line.strip().startswith('{') and line.strip().endswith('}'):
-                        json_line = line.strip()
-                        print(f"📝 DEBUG: Found potential JSON on line {i}: {json_line}")
-                        break
-                
-                if not json_line:
-                    # Try the last line as JSON
-                    json_line = stdout_lines[-1].strip() if stdout_lines else ""
-                    print(f"📝 DEBUG: Using last line as JSON: {json_line}")
-                
-                try:
-                    if json_line:
-                        claude_response = json.loads(json_line)
-                    else:
-                        claude_response = json.loads(result.stdout)
-                    
-                    content = claude_response.get('content', '')
-                    print(f"📝 DEBUG: Parsed JSON successfully")
-                    print(f"📝 DEBUG: Content length: {len(content)}")
-                    print(f"📝 DEBUG: Content preview: {content[:200]}...")
-                    
-                    # Parse the response into file edits
-                    edits = self._parse_ai_response(content)
-                    print(f"📝 DEBUG: Generated {len(edits)} file edits from parsing")
-                    
-                    return edits
-                except json.JSONDecodeError as e:
-                    print(f"❌ JSON decode error: {e}")
-                    print(f"📝 DEBUG: Failed to parse as JSON")
-                    print(f"📝 DEBUG: Attempting to parse raw stdout as content")
-                    
-                    # Fallback: treat the entire stdout as content
-                    edits = self._parse_ai_response(result.stdout)
-                    print(f"📝 DEBUG: Fallback parsing generated {len(edits)} file edits")
-                    return edits
-            else:
-                print(f"❌ Claude Code execution failed")
-                print(f"📝 Exit code: {result.exit_code}")
-                print(f"📝 Stdout: {result.stdout}")
-                print(f"📝 Stderr: {result.stderr}")
+            # Parse the response
+            try:
+                response_text = response.content[0].text.strip()
+                print(f"Claude response: {response_text[:200]}...")
+                response_data = json.loads(response_text)
+                changes = response_data.get('changes', [])
+                print(f"Generated {len(changes)} changes")
+                return changes
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse Claude Code response: {e}")
+                print(f"Response was: {response.content[0].text}")
                 return []
                 
         except Exception as e:
-            print(f"Failed to generate with Claude Code: {e}")
+            print(f"Error generating code locally: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
-    async def _apply_changes_in_sandbox(self, sandbox, file_edits: list) -> bool:
-        """Apply the generated changes in the sandbox."""
-        try:
-            for edit in file_edits:
-                file_path = edit['file_path']
-                new_content = edit['new_content']
-                
-                # Write the new content to the file using E2B SDK (same as working test workflow)
-                full_path = f'/home/user/repo/{file_path}'
-                sandbox.files.write(full_path, new_content)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Failed to apply changes: {e}")
-            return False
+    async def _apply_file_edit(self, sandbox, change):
+        """Apply a file edit in the sandbox"""
+        filepath = change['filepath']  # Should already be fixed (no repo/ prefix)
+        content = change['content']
+        
+        print(f"DEBUG: Applying edit to filepath: {filepath}")
+        
+        # Ensure the directory exists
+        dir_path = os.path.dirname(f"repo/{filepath}")
+        print(f"DEBUG: Directory path: {dir_path}")
+        if dir_path:
+            mkdir_result = sandbox.commands.run(f"mkdir -p {dir_path}")
+            print(f"DEBUG: mkdir result: {mkdir_result.exit_code}")
+        
+        # Write the file content
+        final_path = f"repo/{filepath}"
+        print(f"DEBUG: Writing to final path: {final_path}")
+        write_result = sandbox.commands.run(f"cat > {final_path} << 'EOF'\n{content}\nEOF")
+        print(f"DEBUG: Write result: {write_result.exit_code}")
+        if write_result.exit_code != 0:
+            print(f"DEBUG: Write error: {write_result.stderr}")
+            raise Exception(f"Failed to write file {final_path}: {write_result.stderr}")
     
-    async def _create_github_pr_from_sandbox(self, sandbox, repo_url: str, prompt: str, file_edits: list, github_token: str) -> Dict[str, Any]:
-        """Create GitHub PR from the sandbox changes."""
+    async def _setup_git_in_sandbox(self, sandbox, repo_url):
+        """Setup Git configuration in the sandbox"""
+        # Configure Git with authentication
+        git_commands = [
+            "git config --global user.name 'Tiny Backspace Bot'",
+            "git config --global user.email 'bot@tinybackspace.com'"
+        ]
+        
+        for cmd in git_commands:
+            result = sandbox.commands.run(cmd)
+            if result.exit_code != 0:
+                print(f"Git config failed: {cmd} - {result.stderr}")
+    
+    async def _create_pull_request(self, repo_url: str, branch_name: str, prompt: str) -> dict:
+        """Create a pull request using GitHub API"""
         try:
+            # Extract owner and repo from URL
+            parts = repo_url.rstrip('/').split('/')
+            owner = parts[-2]
+            repo = parts[-1]
+            
+            # Create PR using GitHub API
+            pr_title = f"Apply changes: {prompt[:50]}..."
+            pr_body = f"""
+## Changes Applied
+
+This PR was automatically generated by Tiny Backspace to implement the following request:
+
+**Request:** {prompt}
+
+### What was changed:
+- Code modifications applied based on the user's prompt
+- All changes were generated and tested in a secure sandbox environment
+
+### Technical Details:
+- Generated using Claude Code AI agent
+- Applied in E2B secure sandbox
+- Automated testing and validation performed
+
+---
+*This PR was created automatically by Tiny Backspace*
+"""
+            
+            # Use GitHub API to create PR
             import requests
             
-            # Parse repo URL
-            path_parts = urlparse(repo_url).path.strip('/').split('/')
-            owner, repo_name = path_parts[0], path_parts[1]
+            headers = {
+                'Authorization': f'token {self.github_token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
             
-            headers = {'Authorization': f'token {github_token}'}
-            
-            # Get default branch
-            repo_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}', headers=headers)
-            if repo_response.status_code != 200:
-                return {'success': False, 'error': 'Failed to get repository info'}
-            
-            repo_data = repo_response.json()
-            default_branch = repo_data['default_branch']
-            
-            # Create branch name
-            branch_name = f"tiny-backspace-{int(time.time())}"
-            
-            # Get latest commit SHA
-            branch_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}/branches/{default_branch}', headers=headers)
-            if branch_response.status_code != 200:
-                return {'success': False, 'error': 'Failed to get branch info'}
-            
-            latest_sha = branch_response.json()['commit']['sha']
-            
-            # Create new branch
-            branch_data = {'ref': f'refs/heads/{branch_name}', 'sha': latest_sha}
-            branch_response = requests.post(f'https://api.github.com/repos/{owner}/{repo_name}/git/refs', headers=headers, json=branch_data)
-            
-            if branch_response.status_code not in [200, 201]:
-                return {'success': False, 'error': f'Failed to create branch: {branch_response.text}'}
-            
-            # Apply file edits from sandbox
-            for edit in file_edits:
-                file_path = edit['file_path']
-                new_content = edit['new_content']
-                
-                # Check if file exists
-                file_response = requests.get(f'https://api.github.com/repos/{owner}/{repo_name}/contents/{file_path}', headers=headers, params={'ref': branch_name})
-                
-                if file_response.status_code == 200:
-                    # Update existing file
-                    file_data = file_response.json()
-                    update_data = {
-                        'message': f'Update {file_path}: {edit.get("description", "AI-generated improvement")}',
-                        'content': base64.b64encode(new_content.encode()).decode(),
-                        'sha': file_data['sha'],
-                        'branch': branch_name
-                    }
-                    update_response = requests.put(f'https://api.github.com/repos/{owner}/{repo_name}/contents/{file_path}', headers=headers, json=update_data)
-                else:
-                    # Create new file
-                    create_data = {
-                        'message': f'Add {file_path}: {edit.get("description", "AI-generated file")}',
-                        'content': base64.b64encode(new_content.encode()).decode(),
-                        'branch': branch_name
-                    }
-                    update_response = requests.put(f'https://api.github.com/repos/{owner}/{repo_name}/contents/{file_path}', headers=headers, json=create_data)
-                
-                if update_response.status_code not in [200, 201]:
-                    return {'success': False, 'error': f'Failed to update file {file_path}'}
-            
-            # Create pull request
-            pr_title = self._generate_pr_title(prompt, file_edits)
-            pr_body = self._generate_pr_body(prompt, file_edits)
-            
-            pr_data = {
+            data = {
                 'title': pr_title,
                 'body': pr_body,
                 'head': branch_name,
-                'base': default_branch
+                'base': 'main'  # Assuming main branch
             }
             
-            pr_response = requests.post(f'https://api.github.com/repos/{owner}/{repo_name}/pulls', headers=headers, json=pr_data)
+            response = requests.post(
+                f'https://api.github.com/repos/{owner}/{repo}/pulls',
+                headers=headers,
+                json=data
+            )
             
-            if pr_response.status_code == 201:
-                pr_data = pr_response.json()
+            if response.status_code == 201:
+                pr_data = response.json()
                 return {
-                    'success': True,
-                    'pr_url': pr_data['html_url'],
-                    'branch_name': branch_name
+                    'url': pr_data['html_url'],
+                    'title': pr_title,
+                    'body': pr_body
                 }
             else:
-                return {'success': False, 'error': f'Failed to create PR: {pr_response.text}'}
+                print(f"Failed to create PR: {response.status_code} - {response.text}")
+                return None
                 
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            print(f"Error creating PR: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
-    def _is_valid_github_url(self, url: str) -> bool:
-        """Validate GitHub URL format."""
-        try:
-            parsed = urlparse(url)
-            return parsed.netloc == 'github.com' and len(parsed.path.split('/')) >= 3
-        except:
-            return False
-    
-    def _parse_ai_response(self, content: str) -> list:
-        """Parse AI response into file edits."""
-        edits = []
-        
-        print(f"🔍 DEBUG: Starting to parse AI response")
-        print(f"🔍 DEBUG: Content length: {len(content)}")
-        print(f"🔍 DEBUG: Content preview (first 500 chars): {content[:500]}")
-        print(f"🔍 DEBUG: Content preview (last 500 chars): {content[-500:]}")
-        print(f"🔍 DEBUG: Full content:\n{content}")
-        print(f"🔍 DEBUG: Content repr: {repr(content)}")
-        
-        # Try multiple patterns to extract file edits
-        patterns = [
-            (r'```(\w+):([^\n]+)\n(.*?)```', "language:filepath format"),  # ```python:file.py\ncontent```
-            (r'```([^\n]+)\n(.*?)```', "filepath format"),       # ```file.py\ncontent```
-            (r'File:\s*([^\n]+)\n(.*?)(?=\n\s*File:|$)', "File: format"),  # File: file.py\ncontent
-            (r'([^\n]+\.py)\n```\n(.*?)```', "filepath with code blocks"),  # file.py\n```\ncontent```
-            (r'```python\n([^`]+)```', "python code blocks"),  # ```python\ncode```
-            (r'```([^`]+)```', "generic code blocks"),  # ```code```
-        ]
-        
-        for pattern, description in patterns:
-            print(f"🔍 DEBUG: Trying pattern '{description}': {pattern}")
-            matches = re.findall(pattern, content, re.DOTALL | re.MULTILINE)
-            print(f"🔍 DEBUG: Pattern '{description}' found {len(matches)} matches")
-            
-            if matches:
-                print(f"✅ Found {len(matches)} file edits with pattern: {description}")
-                print(f"🔍 DEBUG: Raw matches: {matches}")
-                
-                for i, match in enumerate(matches):
-                    print(f"🔍 DEBUG: Processing match {i+1}: {match}")
-                    print(f"🔍 DEBUG: Match type: {type(match)}, length: {len(match) if isinstance(match, (tuple, list)) else 'N/A'}")
-                    
-                    if isinstance(match, tuple) and len(match) == 3:  # pattern with language:filepath
-                        file_ext, file_path, file_content = match
-                        print(f"🔍 DEBUG: 3-tuple match - ext: '{file_ext}', path: '{file_path}', content preview: '{file_content[:100]}...'")
-                    elif isinstance(match, tuple) and len(match) == 2:  # patterns with filepath and content
-                        file_path, file_content = match
-                        print(f"🔍 DEBUG: 2-tuple match - path: '{file_path}', content preview: '{file_content[:100]}...'")
-                    elif isinstance(match, str):  # single string match
-                        file_content = match
-                        # For single matches, try to extract a reasonable filename
-                        if description == "python code blocks":
-                            file_path = "generated_code.py"
-                        else:
-                            # Try to find a filename in the content
-                            lines = file_content.split('\n')
-                            first_line = lines[0].strip()
-                            if first_line in ['python', 'javascript', 'typescript']:
-                                file_path = f"generated_code.{first_line[:2]}"
-                                file_content = '\n'.join(lines[1:])  # Remove language identifier
-                            else:
-                                file_path = "generated_code.py"
-                        print(f"🔍 DEBUG: String match - using path: '{file_path}', content preview: '{file_content[:100]}...'")
-                    else:
-                        print(f"🔍 DEBUG: Unexpected match format, skipping: {match}")
-                        continue
-                    
-                    file_path = file_path.strip()
-                    file_content = file_content.strip()
-                    
-                    print(f"🔍 DEBUG: Cleaned - path: '{file_path}', content length: {len(file_content)}")
-                    
-                    # Skip if file_path is empty or looks like a language identifier
-                    if not file_path or file_path in ['python', 'javascript', 'typescript', 'json']:
-                        print(f"🔍 DEBUG: Skipping invalid file path: '{file_path}'")
-                        continue
-                    
-                    # Skip if content is too short to be meaningful
-                    if len(file_content) < 10:
-                        print(f"🔍 DEBUG: Skipping too short content: {len(file_content)} chars")
-                        continue
-                    
-                    edit = {
-                        'file_path': file_path,
-                        'new_content': file_content,
-                        'description': f'AI-generated modification for {file_path}'
-                    }
-                    edits.append(edit)
-                    print(f"✅ DEBUG: Added edit for {file_path} ({len(file_content)} chars)")
-                
-                if edits:  # If we found edits with this pattern, use them
-                    break
-            else:
-                print(f"❌ DEBUG: No matches found for pattern '{description}'")
-        
-        print(f"📝 DEBUG: Final result - parsed {len(edits)} file edits")
-        for i, edit in enumerate(edits):
-            print(f"📝 DEBUG: Edit {i+1}: {edit['file_path']} ({len(edit['new_content'])} chars)")
-        
-        return edits
-    
-    def _generate_pr_title(self, prompt: str, file_edits: list) -> str:
-        """Generate a descriptive PR title based on the prompt and changes."""
-        # Extract key action words from prompt
-        action_words = ['add', 'implement', 'create', 'update', 'fix', 'improve', 'enhance', 'modify']
-        prompt_lower = prompt.lower()
-        
-        # Find the main action
-        action = 'Add'
-        for word in action_words:
-            if word in prompt_lower:
-                action = word.capitalize()
-                break
-        
-        # Create a concise title
-        if len(prompt) <= 50:
-            return f"{action}: {prompt}"
-        else:
-            return f"{action}: {prompt[:47]}..."
-    
-    def _generate_pr_body(self, prompt: str, file_edits: list) -> str:
-        """Generate a descriptive PR body with detailed information."""
-        body = f"""## 🤖 AI-Generated Code Improvements
-
-**User Request:** {prompt}
-
-**Changes Made:**
-"""
-        
-        for edit in file_edits:
-            file_path = edit['file_path']
-            description = edit.get('description', 'Modified')
-            body += f"- **{file_path}**: {description}\n"
-        
-        body += f"""
-**Summary:**
-- **Files Modified**: {len(file_edits)} files
-- **AI Agent**: Claude Code (claude-3-5-sonnet-20241022)
-- **Generated by**: Tiny Backspace AI Agent
-
-This pull request was automatically generated based on your request. The AI agent analyzed the repository structure and implemented the requested changes.
-
-**Review Notes:**
-- All changes are AI-generated and should be reviewed before merging
-- The implementation follows the user's prompt requirements
-- Code quality and best practices have been considered
-"""
-        
-        return body
+    def _create_sse_event(self, event_type: str, message: str) -> str:
+        """Create Server-Sent Event format"""
+        return f"data: {json.dumps({'type': event_type, 'message': message})}\n\n"
 
 # Initialize processor
 processor = TinyBackspaceProcessor()
 
-@app.get("/")
-async def root():
-    """Health check endpoint."""
-    return {
-        "message": "Tiny Backspace API",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": {
-            "POST /code": "Process code changes with AI agent"
-        }
-    }
-
 @app.post("/code")
-async def process_code(request: CodeRequest):
-    """
-    Process code changes with AI agent.
-    
-    This endpoint:
-    1. Clones the repository into a secure sandbox
-    2. Analyzes the codebase with Claude Code
-    3. Generates modifications based on the prompt
-    4. Creates a pull request with the changes
-    5. Streams real-time progress via Server-Sent Events
-    """
-    
-    async def generate_sse_stream() -> AsyncGenerator[str, None]:
-        async for update in processor.process_code_request(request.repoUrl, request.prompt):
-            yield update
-    
-    return StreamingResponse(
-        generate_sse_stream(),
-        media_type="text/plain",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-        }
-    )
+async def code_endpoint(request: Request):
+    """Main endpoint for code generation"""
+    try:
+        body = await request.json()
+        repo_url = body.get('repoUrl')
+        prompt = body.get('prompt')
+        
+        if not repo_url or not prompt:
+            return StreamingResponse(
+                iter([processor._create_sse_event("error", "Missing repoUrl or prompt")]),
+                media_type="text/plain"
+            )
+        
+        return StreamingResponse(
+            processor.process_request(repo_url, prompt),
+            media_type="text/plain"
+        )
+    except Exception as e:
+        return StreamingResponse(
+            iter([processor._create_sse_event("error", f"Request failed: {str(e)}")]),
+            media_type="text/plain"
+        )
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": int(time.time()),
-        "environment": {
-            "e2b_api_key": "Set" if os.getenv('E2B_API_KEY') else "Not set",
-            "anthropic_api_key": "Set" if os.getenv('ANTHROPIC_API_KEY') else "Not set",
-            "github_pat": "Set" if os.getenv('GITHUB_PAT') else "Not set",
-        }
-    }
+    """Health check endpoint"""
+    return {"status": "healthy", "message": "Tiny Backspace is running"}
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,13 +1,18 @@
 # Tiny Backspace
 
-A sandboxed coding agent that can create pull requests! 🚀
+A sandboxed coding agent that automatically creates pull requests based on your prompts.
 
-## 📋 **Project Overview**
+## Overview
 
-I built Tiny Backspace as an autonomous coding agent that takes a GitHub repo URL and coding prompt, then automatically creates pull requests with AI-generated changes. The system streams real-time updates via Server-Sent Events and provides comprehensive observability through Langsmith.
+Tiny Backspace is an AI-powered code generation service that:
 
-**Live Demo**: [https://asad-tiny-backspace.vercel.app](https://asad-tiny-backspace.vercel.app)
+1. Takes a GitHub repository URL and a coding prompt
+2. Clones the repository into a secure E2B sandbox
+3. Uses Claude Code (running locally) to generate code changes
+4. Applies the changes in the sandbox
+5. Creates a pull request with the modifications
 
+<<<<<<< Updated upstream
 ### **✅ Recent Implementation Success**
 
 The system has been successfully tested and is fully functional:
@@ -21,18 +26,34 @@ The system has been successfully tested and is fully functional:
 **Latest Test Results**: Successfully created PR #12 with logging functionality for the tiny-backspace repository!
 
 ## 🚀 **Quick Start**
+=======
+## Architecture
+>>>>>>> Stashed changes
 
-### **Test the Live API**
+- **Local AI Agent**: Claude Code runs locally for code generation
+- **Secure Sandbox**: E2B provides isolated execution environment
+- **Git Operations**: All Git operations happen within the sandbox
+- **Real-time Streaming**: Server-Sent Events provide live updates
+
+## Quick Start
+
+### Prerequisites
+
+1. **GitHub Personal Access Token** with repo permissions
+2. **Anthropic API Key** for Claude Code
+3. **E2B API Key** for sandboxing
+4. **Python 3.8+**
+
+### Installation
+
+1. Clone the repository:
 
 ```bash
-curl -X POST "https://asad-tiny-backspace.vercel.app/api/code" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repoUrl": "https://github.com/your-username/your-repo",
-    "prompt": "Add error handling to the main function"
-  }'
+git clone https://github.com/your-username/tiny-backspace.git
+cd tiny-backspace
 ```
 
+<<<<<<< Updated upstream
 ### **Run Locally (FastAPI Server)**
 
 ```bash
@@ -52,13 +73,14 @@ curl -X POST "http://localhost:8000/code" \
 ```
 
 ### **Run Locally (Legacy Vercel Functions)**
+=======
+2. Create a virtual environment:
+>>>>>>> Stashed changes
 
 ```bash
-# Clone and setup
-git clone https://github.com/AsadShahid04/tiny-backspace.git
-cd tiny-backspace
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+<<<<<<< Updated upstream
 
 # Install dependencies
 pip install -r requirements.txt
@@ -76,10 +98,13 @@ curl -X POST "http://localhost:8000/code" \
     "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
     "prompt": "Add a test section to README"
   }'
+=======
+>>>>>>> Stashed changes
 ```
 
-## 🤖 **AI Agent Approach**
+3. Install dependencies:
 
+<<<<<<< Updated upstream
 I chose **Claude Code (Anthropic)** as the primary AI agent for this implementation:
 
 ### **Primary: Claude Code (Anthropic)**
@@ -114,29 +139,41 @@ I chose **Claude Code (Anthropic)** as the primary AI agent for this implementat
 - **Langsmith Dashboard**: https://smith.langchain.com/ - Real-time traces of agent thinking process
 - **Streaming Telemetry**: 24+ thinking steps with performance metrics
 - **Example Response**:
+=======
+```bash
+pip install -r api/requirements.txt
+```
+
+4. Set up environment variables:
+
+```bash
+cp env.example .env
+# Edit .env with your API keys
+```
+
+5. Run the server:
+
+```bash
+python api/main.py
+```
+
+The server will start on `http://localhost:8000`
+
+### Usage
+
+Send a POST request to `/code` with:
+>>>>>>> Stashed changes
 
 ```json
 {
-  "type": "success",
-  "message": "Processing completed successfully!",
-  "telemetry": {
-    "thinking_logs_count": 25,
-    "langsmith_enabled": true,
-    "recent_thoughts": [
-      { "step": "ai_planning", "thought": "Planning AI processing..." },
-      { "step": "github_pr", "thought": "Creating pull request..." }
-    ]
-  },
-  "extra_data": {
-    "pr_url": "https://github.com/user/repo/pull/123",
-    "total_duration_ms": 5000,
-    "ai_provider": "openai"
-  }
+  "repoUrl": "https://github.com/username/repo-name",
+  "prompt": "Add a simple test endpoint"
 }
 ```
 
-## 🛠️ **Key Features**
+The response will be a Server-Sent Events stream showing:
 
+<<<<<<< Updated upstream
 - **🔒 E2B Sandboxed Execution**: Secure, isolated environment for code processing
 - **🤖 Claude Code Integration**: Real AI coding agent running in sandbox
 - **🔗 GitHub Automation**: Automatic PR creation with AI-generated descriptions
@@ -184,10 +221,37 @@ LANGSMITH_API_KEY=your_langsmith_key
                        │   GitHub API    │    │   Repository    │
                        │  (PR Creation)  │    │   (Cloned)      │
                        └─────────────────┘    └─────────────────┘
+=======
+- Repository cloning progress
+- Code analysis and generation
+- File modifications
+- Git operations
+- Pull request creation
+
+### Example Response Stream
+
+```
+data: {"type": "info", "message": "🚀 Starting request abc12345"}
+data: {"type": "info", "message": "📁 Repository: https://github.com/example/repo"}
+data: {"type": "info", "message": "💭 Prompt: Add a simple test endpoint"}
+data: {"type": "info", "message": "💭 [SANDBOX] Creating secure E2B sandbox environment"}
+data: {"type": "success", "message": "💭 [SANDBOX] E2B sandbox created successfully with ID: xyz789"}
+data: {"type": "info", "message": "💭 [CLONE] Cloning repository https://github.com/example/repo into sandbox"}
+data: {"type": "success", "message": "💭 [CLONE] Repository successfully cloned into sandbox"}
+data: {"type": "info", "message": "🔍 [ANALYSIS] Analyzing repository structure"}
+data: {"type": "success", "message": "🔍 [ANALYSIS] Repository analysis complete: 15 files found"}
+data: {"type": "info", "message": "🤖 [AI_PROCESSING] Processing with Claude Code locally"}
+data: {"type": "info", "message": "🔧 [APPLYING] Applying code changes in sandbox"}
+data: {"type": "info", "message": "🔧 [GIT] Setting up Git operations in sandbox"}
+data: {"type": "info", "message": "🔧 [GIT] Creating branch: feature/abc12345"}
+data: {"type": "info", "message": "🔧 [PR] Creating pull request"}
+data: {"type": "success", "message": "✅ [SUCCESS] Pull request created: https://github.com/example/repo/pull/123"}
+>>>>>>> Stashed changes
 ```
 
-## 🧪 **Testing & Development**
+## API Endpoints
 
+<<<<<<< Updated upstream
 ```bash
 # Test the complete workflow
 python test_full_workflow.py
@@ -205,25 +269,59 @@ curl -X POST "http://localhost:8000/code" \
 
 # Check Langsmith traces (if configured)
 # Visit: https://smith.langchain.com/
+=======
+### POST /code
+
+Main endpoint for code generation.
+
+**Request Body:**
+
+```json
+{
+  "repoUrl": "string (required)",
+  "prompt": "string (required)"
+}
+>>>>>>> Stashed changes
 ```
 
-## 🚀 **Deployment**
+**Response:** Server-Sent Events stream
 
-### **Vercel (Recommended)**
+### GET /health
 
-1. Connect GitHub repo to Vercel
-2. Add environment variables in Vercel dashboard
-3. Deploy automatically on push
+Health check endpoint.
 
-### **Other Platforms**
+**Response:**
 
-- Render, Heroku, AWS, GCP, Azure supported
-- Add `Procfile` for Heroku deployment
+```json
+{
+  "status": "healthy",
+  "message": "Tiny Backspace is running"
+}
+```
 
-## 📁 **Project Structure**
+## Environment Variables
+
+| Variable            | Description                       | Required |
+| ------------------- | --------------------------------- | -------- |
+| `GITHUB_PAT`        | GitHub Personal Access Token      | Yes      |
+| `ANTHROPIC_API_KEY` | Anthropic API Key for Claude Code | Yes      |
+| `E2B_API_KEY`       | E2B API Key for sandboxing        | Yes      |
+| `OPENAI_API_KEY`    | OpenAI API Key (alternative)      | No       |
+
+## Security Features
+
+- **Sandboxed Execution**: All code runs in isolated E2B environments
+- **Local AI Processing**: Claude Code runs locally, not in the sandbox
+- **Secure File Operations**: File modifications happen in controlled sandbox
+- **Git Authentication**: Uses GitHub Personal Access Token for secure operations
+
+## Development
+
+### Project Structure
 
 ```
 tiny-backspace/
+<<<<<<< Updated upstream
 ├── api/                    # FastAPI server and Vercel functions
 │   ├── main.py            # FastAPI server with SSE streaming
 │   ├── code.py            # Legacy Vercel function
@@ -232,10 +330,62 @@ tiny-backspace/
 ├── requirements.txt       # Python dependencies
 ├── .env                   # Environment variables
 └── README.md             # This file
+=======
+├── api/
+│   ├── main.py              # FastAPI application
+│   ├── requirements.txt     # Python dependencies
+│   └── simple_observability.py  # Observability utilities
+├── venv/                    # Python virtual environment
+├── .env                     # Environment variables (create from env.example)
+├── env.example             # Environment variables template
+└── README.md               # This file
+>>>>>>> Stashed changes
 ```
 
----
+### Running Tests
 
-**Built with ❤️ for the developer community**
+```bash
+# Start the server
+python api/main.py
 
-_This project demonstrates modern autonomous coding agent architecture with enterprise-grade observability and reliability._
+# In another terminal, test the endpoint
+curl -X POST http://localhost:8000/code \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repoUrl": "https://github.com/your-username/test-repo",
+    "prompt": "Add a simple test endpoint"
+  }'
+```
+
+## Deployment
+
+### Local Development
+
+```bash
+python api/main.py
+```
+
+### Production
+
+The application can be deployed to any platform that supports FastAPI:
+
+- Railway
+- Heroku
+- DigitalOcean App Platform
+- AWS Lambda (with modifications)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Support
+
+For issues and questions, please open a GitHub issue.
