@@ -1,15 +1,10 @@
-<<<<<<< Updated upstream
-requests==2.31.0
+fastapi==0.104.1
+uvicorn==0.24.0
+e2b==1.7.0
 anthropic==0.18.1
+python-dotenv==1.0.0
+requests==2.31.0
 openai==1.12.0
 langsmith==0.0.69
 loguru==0.7.2
-e2b==1.7.0 
-=======
-fastapi==0.104.1
-uvicorn==0.24.0
-e2b==0.12.0
-anthropic==0.7.8
-python-dotenv==1.0.0
-requests==2.31.0 
->>>>>>> Stashed changes
+psutil==5.9.6

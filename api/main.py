@@ -6,7 +6,7 @@ import os
 import sys
 import uuid
 import re
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 import subprocess
 import tempfile
 import shutil
@@ -14,6 +14,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 import anthropic
 import requests
+import socket
+import signal
+import psutil
+import time
+import traceback
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,6 +37,8 @@ app = FastAPI(title="Tiny Backspace", description="AI-powered code generation an
 
 class TinyBackspaceProcessor:
     def __init__(self):
+        self.max_retries = 3
+        self.retry_delay = 2  # seconds
         pass
     
     def _validate_environment(self):
@@ -47,8 +54,9 @@ class TinyBackspaceProcessor:
             raise ValueError("ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable is required")
     
     async def process_request(self, repo_url: str, prompt: str) -> AsyncGenerator[str, None]:
-        """Main processing pipeline"""
+        """Main processing pipeline with comprehensive error handling"""
         request_id = str(uuid.uuid4())[:8]
+        sandbox = None
         
         try:
             # Validate environment variables
@@ -60,22 +68,29 @@ class TinyBackspaceProcessor:
             
             # Step 2: Validate repository URL
             if not self._is_valid_github_url(repo_url):
-                yield self._create_sse_event("error", "Invalid GitHub repository URL")
+                yield self._create_sse_event("error", "❌ Invalid GitHub repository URL format")
                 return
             
-            # Step 3: Create sandbox
+            # Step 3: Create sandbox with retry logic
             yield self._create_sse_event("info", "💭 [SANDBOX] Creating secure E2B sandbox environment")
-            sandbox = Sandbox()
             try:
-                yield self._create_sse_event("success", f"💭 [SANDBOX] E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
+                sandbox = await self._safe_async_execute_with_retry(
+                    "Sandbox Creation", 
+                    self._create_sandbox_async
+                )
+                yield self._create_sse_event("success", f"✅ [SANDBOX] E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
+            except Exception as e:
+                yield self._create_sse_event("error", f"❌ [SANDBOX] Failed to create sandbox: {str(e)}")
+                return
                 
-                # Step 4: Clone repository
+                # Step 4: Clone repository with retry logic
                 yield self._create_sse_event("info", f"💭 [CLONE] Cloning repository {repo_url} into sandbox")
-                clone_result = sandbox.commands.run(f"git clone {repo_url} repo")
-                if clone_result.exit_code != 0:
-                    yield self._create_sse_event("error", f"Failed to clone repository: {clone_result.stderr}")
+                try:
+                    await self._clone_repository_with_retry(sandbox, repo_url)
+                    yield self._create_sse_event("success", "✅ [CLONE] Repository successfully cloned into sandbox")
+                except Exception as e:
+                    yield self._create_sse_event("error", f"❌ [CLONE] Failed to clone repository: {str(e)}")
                     return
-                yield self._create_sse_event("success", "💭 [CLONE] Repository successfully cloned into sandbox")
                 
                 # Step 5: Analyze repository structure
                 yield self._create_sse_event("info", "🔍 [ANALYSIS] Analyzing repository structure")
@@ -90,8 +105,8 @@ class TinyBackspaceProcessor:
                     if file_path and file_path.strip():  # Check if file_path is not empty
                         read_result = sandbox.commands.run(f"cat {file_path}")
                         if read_result.exit_code == 0:
-                            # Remove 'repo/' prefix from file path for AI consumption
-                            clean_file_path = file_path.replace('repo/', '')
+                            # Normalize file path for AI consumption
+                            clean_file_path = self._normalize_file_path(file_path)
                             file_contents[clean_file_path] = read_result.stdout
                             yield self._create_sse_event("info", f"💭 [FILE_READING] Reading file: {file_path} -> {clean_file_path}")
                         else:
@@ -104,7 +119,7 @@ class TinyBackspaceProcessor:
                 
                 # Step 7: Generate code with Claude Code locally
                 yield self._create_sse_event("info", "🤖 [AI_PROCESSING] Processing with Claude Code locally")
-                code_changes = await self._generate_code_locally(prompt, file_contents, repo_url)
+                code_changes = await self._generate_code_with_retry(prompt, file_contents, repo_url)
                 
                 if not code_changes:
                     yield self._create_sse_event("error", "❌ [ERROR] Failed to generate code modifications")
@@ -114,15 +129,17 @@ class TinyBackspaceProcessor:
                 yield self._create_sse_event("info", "🔧 [APPLYING] Applying code changes in sandbox")
                 for change in code_changes:
                     if change['type'] == 'edit':
-                        yield self._create_sse_event("info", f"🔧 [APPLYING] Processing change: {change['filepath']}")
+                        original_filepath = change['filepath']
+                        yield self._create_sse_event("info", f"🔧 [APPLYING] Processing change: {original_filepath}")
                         
-                        # Fix file path if it has repo/ prefix
-                        if change['filepath'].startswith('repo/'):
-                            change['filepath'] = change['filepath'][5:]  # Remove repo/ prefix
-                            yield self._create_sse_event("info", f"🔧 [APPLYING] Fixed filepath to: {change['filepath']}")
+                        # Normalize file path
+                        normalized_filepath = self._normalize_file_path(original_filepath)
+                        change['filepath'] = normalized_filepath
+                        if original_filepath != normalized_filepath:
+                            yield self._create_sse_event("info", f"🔧 [APPLYING] Normalized filepath: {original_filepath} -> {normalized_filepath}")
                         
                         await self._apply_file_edit(sandbox, change)
-                        yield self._create_sse_event("info", f"🔧 [APPLYING] Applied edit to {change['filepath']}")
+                        yield self._create_sse_event("info", f"🔧 [APPLYING] Applied edit to {normalized_filepath}")
                 
                 # Step 9: Git operations in sandbox
                 yield self._create_sse_event("info", "🔧 [GIT] Setting up Git operations in sandbox")
@@ -143,13 +160,20 @@ class TinyBackspaceProcessor:
                 
                 for cmd, description in git_commands:
                     yield self._create_sse_event("info", f"🔧 [GIT] {description}")
-                    result = sandbox.commands.run(cmd)
-                    if result.exit_code != 0:
-                        yield self._create_sse_event("error", f"Git command failed: {description}")
-                        yield self._create_sse_event("error", f"Command: {cmd}")
-                        yield self._create_sse_event("error", f"Error: {result.stderr}")
+                    try:
+                        result = self._safe_execute_with_retry(
+                            f"Git {description}",
+                            lambda: sandbox.commands.run(cmd)
+                        )
+                        if result.exit_code != 0:
+                            yield self._create_sse_event("error", f"❌ [GIT] {description} failed")
+                            yield self._create_sse_event("error", f"Command: {cmd}")
+                            yield self._create_sse_event("error", f"Error: {result.stderr}")
+                            return
+                        yield self._create_sse_event("success", f"✅ [GIT] {description} completed")
+                    except Exception as e:
+                        yield self._create_sse_event("error", f"❌ [GIT] {description} failed after retries: {str(e)}")
                         return
-                    yield self._create_sse_event("success", f"✅ [GIT] {description} completed")
                 
                 # Step 11: Create PR
                 yield self._create_sse_event("info", "🔧 [PR] Creating pull request")
@@ -162,11 +186,20 @@ class TinyBackspaceProcessor:
                 else:
                     yield self._create_sse_event("error", "❌ [ERROR] Failed to create pull request")
             finally:
-                # Clean up sandbox
-                sandbox.kill()
+                # Clean up sandbox with error handling
+                if sandbox:
+                    try:
+                        yield self._create_sse_event("info", "🧹 [CLEANUP] Cleaning up sandbox environment")
+                        sandbox.kill()
+                        yield self._create_sse_event("success", "✅ [CLEANUP] Sandbox cleaned up successfully")
+                    except Exception as cleanup_error:
+                        yield self._create_sse_event("error", f"⚠️ [CLEANUP] Failed to cleanup sandbox: {str(cleanup_error)}")
                 
         except Exception as e:
-            yield self._create_sse_event("error", f"❌ [ERROR] Processing failed: {str(e)}")
+            error_details = f"❌ [ERROR] Processing failed: {str(e)}"
+            print(f"Full error traceback: {traceback.format_exc()}")
+            yield self._create_sse_event("error", error_details)
+            yield self._create_sse_event("error", "💡 [RECOVERY] Please check your environment variables and try again")
     
     def _is_valid_github_url(self, url: str) -> bool:
         """Validate GitHub repository URL"""
@@ -179,46 +212,41 @@ class TinyBackspaceProcessor:
             # Create client
             client = anthropic.Anthropic(api_key=self.anthropic_key)
             
-            # Create detailed prompt for Claude Code
-            detailed_prompt = f"""
-You are a coding agent working on repository: {repo_url}
-
-User request: {prompt}
-
-Available files and their contents:
-{json.dumps(file_contents, indent=2)}
-
-Please analyze the codebase and provide specific code changes to implement the user's request.
-Return your response in the following JSON format:
-
-{{
+            # Create detailed prompt for Claude Code using string concatenation to avoid f-string issues
+            json_template = """{
     "changes": [
-        {{
+        {
             "type": "edit",
             "filepath": "api/main.py",
             "content": "new file content",
             "description": "what this change does"
-        }}
+        }
     ],
     "explanation": "Brief explanation of the changes made"
-}}
-
-IMPORTANT: 
-- Use relative file paths WITHOUT the 'repo/' prefix (e.g., 'api/main.py' not 'repo/api/main.py')
-- The filepath should match exactly with the files shown in the available files list
-- Make minimal, focused changes to implement the user's request
-- Follow the existing code style and patterns
-- Add proper error handling where needed
-
-Focus on:
-1. Understanding the existing codebase structure
-2. Making minimal, focused changes
-3. Following the existing code style and patterns
-4. Adding proper error handling where needed
-5. Ensuring the changes are testable and maintainable
-
-Only return valid JSON, no additional text.
-"""
+}"""
+            
+            detailed_prompt = (
+                "You are a coding agent working on repository: " + repo_url + "\n\n"
+                "User request: " + prompt + "\n\n"
+                "Available files and their contents:\n" +
+                json.dumps(file_contents, indent=2) + "\n\n"
+                "Please analyze the codebase and provide specific code changes to implement the user's request.\n"
+                "Return your response in the following JSON format:\n\n" +
+                json_template + "\n\n"
+                "IMPORTANT:\n"
+                "- Use relative file paths WITHOUT the 'repo/' prefix (e.g., 'api/main.py' not 'repo/api/main.py')\n"
+                "- The filepath should match exactly with the files shown in the available files list\n"
+                "- Make minimal, focused changes to implement the user's request\n"
+                "- Follow the existing code style and patterns\n"
+                "- Add proper error handling where needed\n\n"
+                "Focus on:\n"
+                "1. Understanding the existing codebase structure\n"
+                "2. Making minimal, focused changes\n"
+                "3. Following the existing code style and patterns\n"
+                "4. Adding proper error handling where needed\n"
+                "5. Ensuring the changes are testable and maintainable\n\n"
+                "Only return valid JSON, no additional text."
+            )
             
             # Send request to Claude
             response = client.messages.create(
@@ -249,26 +277,47 @@ Only return valid JSON, no additional text.
     
     async def _apply_file_edit(self, sandbox, change):
         """Apply a file edit in the sandbox"""
-        filepath = change['filepath']  # Should already be fixed (no repo/ prefix)
+        filepath = self._normalize_file_path(change['filepath'])  # Ensure normalized
         content = change['content']
         
-        print(f"DEBUG: Applying edit to filepath: {filepath}")
+        print(f"DEBUG: Applying edit to normalized filepath: {filepath}")
+        
+        # Get the full sandbox path
+        sandbox_path = self._get_sandbox_file_path(filepath)
+        dir_path = os.path.dirname(sandbox_path)
+        
+        print(f"DEBUG: Sandbox path: {sandbox_path}")
+        print(f"DEBUG: Directory path: {dir_path}")
         
         # Ensure the directory exists
-        dir_path = os.path.dirname(f"repo/{filepath}")
-        print(f"DEBUG: Directory path: {dir_path}")
-        if dir_path:
+        if dir_path and dir_path != "repo":
             mkdir_result = sandbox.commands.run(f"mkdir -p {dir_path}")
             print(f"DEBUG: mkdir result: {mkdir_result.exit_code}")
         
-        # Write the file content
-        final_path = f"repo/{filepath}"
-        print(f"DEBUG: Writing to final path: {final_path}")
-        write_result = sandbox.commands.run(f"cat > {final_path} << 'EOF'\n{content}\nEOF")
-        print(f"DEBUG: Write result: {write_result.exit_code}")
-        if write_result.exit_code != 0:
-            print(f"DEBUG: Write error: {write_result.stderr}")
-            raise Exception(f"Failed to write file {final_path}: {write_result.stderr}")
+        # Write the file content using base64 encoding to avoid shell escaping issues
+        print(f"DEBUG: Writing to final path: {sandbox_path}")
+        
+        try:
+            # Encode content to base64 to safely handle special characters
+            import base64
+            encoded_content = base64.b64encode(content.encode('utf-8')).decode('ascii')
+            
+            # Use base64 decoding to write the file safely
+            write_result = sandbox.commands.run(f"echo '{encoded_content}' | base64 -d > {sandbox_path}")
+            print(f"DEBUG: Write result: {write_result.exit_code}")
+            
+            if write_result.exit_code != 0:
+                print(f"DEBUG: Write error: {write_result.stderr}")
+                # Fallback: try using printf method
+                print("DEBUG: Trying fallback method with printf")
+                escaped_content = content.replace("'", "'\"'\"'").replace("\\", "\\\\")
+                fallback_result = sandbox.commands.run(f"printf '%s' '{escaped_content}' > {sandbox_path}")
+                if fallback_result.exit_code != 0:
+                    raise Exception(f"Failed to write file {sandbox_path}: {fallback_result.stderr}")
+                    
+        except Exception as e:
+            print(f"DEBUG: Exception during file write: {e}")
+            raise Exception(f"Failed to write file {sandbox_path}: {str(e)}")
     
     async def _setup_git_in_sandbox(self, sandbox, repo_url):
         """Setup Git configuration in the sandbox"""
@@ -355,8 +404,121 @@ This PR was automatically generated by Tiny Backspace to implement the following
         """Create Server-Sent Event format"""
         return f"data: {json.dumps({'type': event_type, 'message': message})}\n\n"
 
+    def _normalize_file_path(self, filepath: str) -> str:
+        """Normalize file path by removing repo/ prefix and ensuring consistency"""
+        if not filepath:
+            return filepath
+            
+        # Remove leading/trailing whitespace
+        filepath = filepath.strip()
+        
+        # Remove repo/ prefix if present (handle multiple occurrences)
+        while filepath.startswith('repo/'):
+            filepath = filepath[5:]
+        
+        # Remove leading slash if present
+        if filepath.startswith('/'):
+            filepath = filepath[1:]
+            
+        return filepath
+    
+    def _get_sandbox_file_path(self, filepath: str) -> str:
+        """Get the full sandbox file path by adding repo/ prefix to normalized path"""
+        normalized = self._normalize_file_path(filepath)
+        return f"repo/{normalized}" if normalized else "repo/"
+
+    def _safe_execute_with_retry(self, operation_name: str, operation_func, *args, **kwargs):
+        """Execute operation with retry logic and comprehensive error handling"""
+        for attempt in range(self.max_retries):
+            try:
+                result = operation_func(*args, **kwargs)
+                return result
+            except Exception as e:
+                print(f"❌ {operation_name} failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
+                if attempt < self.max_retries - 1:
+                    print(f"⏳ Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f"💥 {operation_name} failed after {self.max_retries} attempts")
+                    raise e
+    
+    async def _safe_async_execute_with_retry(self, operation_name: str, operation_func, *args, **kwargs):
+        """Execute async operation with retry logic and comprehensive error handling"""
+        for attempt in range(self.max_retries):
+            try:
+                result = await operation_func(*args, **kwargs)
+                return result
+            except Exception as e:
+                print(f"❌ {operation_name} failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
+                if attempt < self.max_retries - 1:
+                    print(f"⏳ Retrying in {self.retry_delay} seconds...")
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    print(f"💥 {operation_name} failed after {self.max_retries} attempts")
+                    raise e
+
+    async def _create_sandbox_async(self):
+        """Create E2B sandbox asynchronously"""
+        return Sandbox()
+    
+    async def _clone_repository_with_retry(self, sandbox, repo_url: str):
+        """Clone repository with retry logic"""
+        def clone_operation():
+            result = sandbox.commands.run(f"git clone {repo_url} repo")
+            if result.exit_code != 0:
+                raise Exception(f"Git clone failed: {result.stderr}")
+            return result
+        
+        return self._safe_execute_with_retry("Repository Clone", clone_operation)
+    
+    async def _generate_code_with_retry(self, prompt: str, file_contents: dict, repo_url: str):
+        """Generate code with retry logic"""
+        return await self._safe_async_execute_with_retry(
+            "AI Code Generation",
+            self._generate_code_locally,
+            prompt, file_contents, repo_url
+        )
+
 # Initialize processor
 processor = TinyBackspaceProcessor()
+
+def _check_port_available(port: int) -> bool:
+    """Check if a port is available"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('0.0.0.0', port))
+            return True
+    except OSError:
+        return False
+
+def _kill_process_on_port(port: int) -> bool:
+    """Kill any process using the specified port"""
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'connections']):
+            try:
+                connections = proc.info['connections']
+                if connections:
+                    for conn in connections:
+                        if conn.laddr.port == port:
+                            print(f"Killing process {proc.info['pid']} ({proc.info['name']}) using port {port}")
+                            proc.kill()
+                            return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return False
+    except Exception as e:
+        print(f"Error killing process on port {port}: {e}")
+        return False
+
+def _setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown"""
+    def signal_handler(signum, frame):
+        print(f"Received signal {signum}, shutting down gracefully...")
+        # Cleanup code here if needed
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
 @app.post("/code")
 async def code_endpoint(request: Request):
@@ -389,4 +551,27 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    
+    # Setup signal handlers for graceful shutdown
+    _setup_signal_handlers()
+    
+    port = 8000
+    print(f"🚀 Starting Tiny Backspace server on port {port}")
+    
+    # Check if port is available
+    if not _check_port_available(port):
+        print(f"⚠️ Port {port} is already in use, attempting to free it...")
+        if _kill_process_on_port(port):
+            print(f"✅ Successfully freed port {port}")
+            # Wait a moment for the port to be released
+            import time
+            time.sleep(1)
+        else:
+            print(f"❌ Could not free port {port}, trying alternative port...")
+            port = 8001
+            if not _check_port_available(port):
+                print(f"❌ Port {port} is also unavailable, exiting...")
+                sys.exit(1)
+    
+    print(f"✅ Port {port} is available, starting server...")
+    uvicorn.run(app, host="0.0.0.0", port=port) 
