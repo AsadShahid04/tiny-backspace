@@ -74,23 +74,20 @@ class TinyBackspaceProcessor:
             # Step 3: Create sandbox with retry logic
             yield self._create_sse_event("info", "💭 [SANDBOX] Creating secure E2B sandbox environment")
             try:
-                sandbox = await self._safe_async_execute_with_retry(
-                    "Sandbox Creation", 
-                    self._create_sandbox_async
-                )
+                sandbox = await self._create_sandbox_async()
                 yield self._create_sse_event("success", f"✅ [SANDBOX] E2B sandbox created successfully with ID: {sandbox.sandbox_id}")
             except Exception as e:
                 yield self._create_sse_event("error", f"❌ [SANDBOX] Failed to create sandbox: {str(e)}")
                 return
-                
-                # Step 4: Clone repository with retry logic
-                yield self._create_sse_event("info", f"💭 [CLONE] Cloning repository {repo_url} into sandbox")
-                try:
-                    await self._clone_repository_with_retry(sandbox, repo_url)
-                    yield self._create_sse_event("success", "✅ [CLONE] Repository successfully cloned into sandbox")
-                except Exception as e:
-                    yield self._create_sse_event("error", f"❌ [CLONE] Failed to clone repository: {str(e)}")
-                    return
+            
+            # Step 4: Clone repository with retry logic
+            yield self._create_sse_event("info", f"💭 [CLONE] Cloning repository {repo_url} into sandbox")
+            try:
+                await self._clone_repository_with_retry(sandbox, repo_url)
+                yield self._create_sse_event("success", "✅ [CLONE] Repository successfully cloned into sandbox")
+            except Exception as e:
+                yield self._create_sse_event("error", f"❌ [CLONE] Failed to clone repository: {str(e)}")
+                return
                 
                 # Step 5: Analyze repository structure
                 yield self._create_sse_event("info", "🔍 [ANALYSIS] Analyzing repository structure")
