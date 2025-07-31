@@ -14,12 +14,12 @@
 
 ## 🔧 IMMEDIATE FIXES NEEDED
 
-### 1. **String Formatting Error in Claude Code Script** (URGENT)
+### 1. **Claude Code Response Parsing** (URGENT)
 
-- **Issue**: `ValueError: Invalid format specifier ' "Test endpoint working!"' for object of type 'str'`
-- **Location**: Generated script in `api/main.py` line 53
-- **Fix**: Escape curly braces in the prompt template
-- **Status**: Blocking Claude Code execution
+- **Issue**: Claude Code returns 0 edits despite successful execution
+- **Location**: `_generate_with_claude_code()` function in `api/main.py`
+- **Fix**: Debug AI response format and improve parsing logic
+- **Status**: Blocking code modification generation
 
 ### 2. **AI Response Parsing Enhancement**
 
@@ -31,13 +31,13 @@
 
 ### 3. **Git Operations & PR Creation**
 
+- [x] **File Modifications**: Apply AI-generated changes to files (`_apply_changes_in_sandbox()`)
+- [x] **PR Creation**: Create pull request via GitHub API (`_create_github_pr_from_sandbox()`)
+- [x] **PR URL Return**: Return pull request URL to user
 - [ ] **Git Setup in Sandbox**: Configure git with user credentials
 - [ ] **Branch Creation**: Create feature branch for changes
-- [ ] **File Modifications**: Apply AI-generated changes to files
 - [ ] **Commit Changes**: Stage and commit modifications
 - [ ] **Push to Remote**: Push branch to GitHub repository
-- [ ] **PR Creation**: Create pull request via GitHub API
-- [ ] **PR URL Return**: Return pull request URL to user
 
 ### 4. **Error Handling & Edge Cases**
 
@@ -100,27 +100,27 @@
 
 **Infrastructure**: ✅ 90% Complete
 **AI Integration**: ⚠️ 70% Complete (needs string formatting fix)
-**Git Operations**: ❌ 0% Complete
-**PR Creation**: ❌ 0% Complete
+**Git Operations**: ⚠️ 40% Complete (API-based PR creation implemented, sandbox git ops needed)
+**PR Creation**: ✅ 80% Complete (GitHub API implementation complete, needs testing)
 **Documentation**: ⚠️ 30% Complete
 
-**Overall Progress**: ~60% Complete
+**Overall Progress**: ~75% Complete
 
 ## 🔍 NEXT STEPS
 
-1. **Immediate**: Fix the string formatting error in the Claude Code script generation
-2. **Debug**: Test Claude Code execution and response parsing
-3. **Implement**: Add git operations and PR creation functionality
+1. **Immediate**: Debug Claude Code response parsing (why 0 edits returned)
+2. **Test**: Verify GitHub PR creation via API works correctly
+3. **Implement**: Add sandbox-based git operations (branch, commit, push)
 4. **Test**: End-to-end testing of the complete workflow
 5. **Document**: Complete README and deployment instructions
 6. **Demo**: Record demonstration video
 
 ## 🚨 BLOCKERS
 
-- String formatting error preventing Claude Code execution
-- Need to implement git operations in sandbox
-- Need to implement GitHub PR creation
+- Claude Code returning 0 edits despite successful execution
+- Need to implement sandbox-based git operations (branch, commit, push)
 - Missing comprehensive error handling
+- Need to test GitHub PR creation via API
 
 ## 📝 NOTES
 
@@ -128,4 +128,6 @@
 - Server infrastructure is working perfectly
 - Real-time streaming is functional
 - Sandbox environment is properly configured
-- Main blocker is the string formatting issue in the generated script
+- GitHub PR creation via API is implemented but needs testing
+- Main blocker is Claude Code returning 0 edits despite successful execution
+- File modification and PR creation functions are implemented and ready
