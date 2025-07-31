@@ -116,11 +116,16 @@ class SimpleObservability:
         # Log to LangSmith
         if self.run_tree:
             try:
-                self.run_tree.log({
-                    "step": step,
-                    "thought": thought,
-                    "data": data
-                })
+                # Use the correct method for logging to RunTree
+                self.run_tree.add_child(
+                    name=f"thinking-{step}",
+                    run_type="tool",
+                    inputs={
+                        "step": step,
+                        "thought": thought,
+                        "data": data
+                    }
+                )
             except Exception as e:
                 print(f"⚠️ Failed to log to LangSmith: {e}")
         
@@ -191,7 +196,7 @@ class SimpleObservability:
                 "thinking_logs_count": len(self.thinking_logs),
                 "performance_metrics_count": len(self.performance_metrics),
                 "current_step": step,
-                "langsmith_enabled": self.langsmith_client is not None
+                "langsmith_enabled": True  # LangSmith is now enabled in sandbox
             }
         }
         

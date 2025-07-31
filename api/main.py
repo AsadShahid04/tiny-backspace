@@ -174,7 +174,9 @@ class TinyBackspaceProcessor:
             await asyncio.sleep(1)
             
             self.obs.log_agent_thinking("ai_processing", "Generating code modifications based on repository analysis and user requirements")
-            file_edits = await self._generate_with_claude_code(sandbox, prompt, repo_info)
+            yield self._create_ai_message_update("Starting Claude Code generation...")
+            file_edits = await self._generate_with_claude_code(sandbox, prompt, repo_info, anthropic_key)
+            yield self._create_ai_message_update(f"Claude Code generation completed. Result: {len(file_edits) if file_edits else 0} edits")
             if not file_edits:
                 self.obs.log_agent_thinking("error", "Claude Code failed to generate meaningful code modifications")
                 yield self._create_sse_update("error", "Failed to generate code modifications", "claude_processing", 70)
@@ -321,8 +323,9 @@ class TinyBackspaceProcessor:
         try:
             # Install required packages using E2B SDK (same as working test workflow)
             setup_commands = [
-                'pip install anthropic',
-                'pip install requests'
+                'pip install --upgrade anthropic',
+                'pip install requests',
+                'pip install langsmith'
             ]
             
             for cmd in setup_commands:
@@ -359,16 +362,61 @@ class TinyBackspaceProcessor:
             print(f"Failed to analyze repository: {e}")
             return None
     
-    async def _generate_with_claude_code(self, sandbox, prompt: str, repo_info: Dict[str, Any]) -> list:
+    async def _generate_with_claude_code(self, sandbox, prompt: str, repo_info: Dict[str, Any], anthropic_key: str) -> list:
         """Generate code modifications using Claude Code in the sandbox."""
         try:
-            # Create Python script for Claude Code
+            # Create Python script for Claude Code with LangSmith integration
             claude_script = f'''
 import anthropic
 import json
 import os
+import time
 
-client = anthropic.Anthropic(api_key="{os.getenv("ANTHROPIC_API_KEY")}")
+# LangSmith setup for sandbox
+try:
+    from langsmith import Client
+    langsmith_client = Client(api_key="{os.getenv('LANGSMITH_API_KEY')}")
+    print("✅ LangSmith client initialized in sandbox")
+except Exception as e:
+    print(f"⚠️ LangSmith not available in sandbox: {{e}}")
+    langsmith_client = None
+
+# Initialize Anthropic client with correct API key
+api_key = "{anthropic_key}"
+if not api_key:
+    print("❌ ANTHROPIC_API_KEY not found")
+    exit(1)
+
+try:
+    client = anthropic.Anthropic(api_key=api_key)
+    print("✅ Anthropic client initialized in sandbox")
+except Exception as e:
+    print(f"❌ Failed to initialize Anthropic client: {{e}}")
+    exit(1)
+
+# Start LangSmith trace
+if langsmith_client:
+    try:
+        from langsmith.run_trees import RunTree
+        run_tree = RunTree(
+            name="tiny-backspace-sandbox-request",
+            run_type="chain",
+            inputs={{
+                "repo_name": "{repo_info['name']}",
+                "file_count": {repo_info['file_count']},
+                "files": {repo_info.get('files', [])},
+                "prompt": "{prompt}",
+                "model": "claude-3-5-sonnet-20241022"
+            }},
+            client=langsmith_client
+        )
+        run_tree.post()
+        print("✅ LangSmith trace started in sandbox")
+    except Exception as e:
+        print(f"⚠️ Failed to start LangSmith trace: {{e}}")
+        run_tree = None
+else:
+    run_tree = None
 
 message = f"""
 You are an expert AI coding assistant. Analyze this repository and generate code modifications based on the user's prompt.
@@ -383,28 +431,85 @@ User Request: {prompt}
 Please analyze the repository structure and generate appropriate code modifications.
 Focus on the most relevant files for the user's request.
 
-Generate file edits in this exact format:
+IMPORTANT: Generate file edits in this EXACT format:
+
+```python:api/main.py
+# Add your new code here
+@app.get("/test")
+async def test_endpoint():
+    return {{"message": "Test endpoint working!"}}
+```
+
+For each file you want to modify, use the format:
 ```python:file_path
 new content here
 ```
 
 Be specific and provide meaningful improvements based on the user's prompt.
+Make sure to include the file path in the code block header.
 """
 
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=4000,
-    messages=[{{"role": "user", "content": message}}]
-)
+# Log thinking step
+if run_tree:
+    try:
+        run_tree.add_child(
+            name="thinking-ai_processing",
+            run_type="tool",
+            inputs={{
+                "step": "ai_processing",
+                "thought": f"Processing prompt: {{prompt}}",
+                "files_analyzed": len({repo_info.get('files', [])})
+            }}
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to log thinking step: {{e}}")
 
-print(json.dumps({{
+try:
+    response = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=4000,
+        messages=[{{"role": "user", "content": message}}]
+    )
+    print("✅ Claude response received successfully")
+except Exception as e:
+    print(f"❌ Failed to get Claude response: {{e}}")
+    exit(1)
+
+# Log AI response
+if run_tree:
+    try:
+        run_tree.add_child(
+            name="thinking-ai_response",
+            run_type="tool",
+            inputs={{
+                "step": "ai_response",
+                "model": response.model,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "content_length": len(response.content[0].text)
+            }}
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to log AI response: {{e}}")
+
+result = {{
     "content": response.content[0].text,
     "model": response.model,
     "usage": {{
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens
     }}
-}}))
+}}
+
+# End LangSmith trace
+if run_tree:
+    try:
+        run_tree.end(outputs=result)
+        print("✅ LangSmith trace completed in sandbox")
+    except Exception as e:
+        print(f"⚠️ Failed to end LangSmith trace: {{e}}")
+
+print(json.dumps(result))
 '''
             
             # Write script to sandbox using E2B SDK (same as working test workflow)
@@ -414,17 +519,27 @@ print(json.dumps({{
             result = sandbox.commands.run('python claude_code.py')
             
             if result.exit_code == 0 and result.stdout:
+                print(f"✅ Claude Code execution successful")
+                print(f"📝 Raw stdout: {result.stdout}")
                 try:
                     claude_response = json.loads(result.stdout)
                     content = claude_response.get('content', '')
+                    print(f"📝 Parsed content: {content}")
                     
                     # Parse the response into file edits
                     edits = self._parse_ai_response(content)
+                    print(f"📝 Generated {len(edits)} file edits")
                     
                     return edits
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON decode error: {e}")
+                    print(f"📝 Failed to parse stdout: {result.stdout}")
                     return []
             else:
+                print(f"❌ Claude Code execution failed")
+                print(f"📝 Exit code: {result.exit_code}")
+                print(f"📝 Stdout: {result.stdout}")
+                print(f"📝 Stderr: {result.stderr}")
                 return []
                 
         except Exception as e:
@@ -552,17 +667,43 @@ print(json.dumps({{
         """Parse AI response into file edits."""
         edits = []
         
-        # Extract file blocks
-        pattern = r'```(\w+):([^\n]+)\n(.*?)```'
-        matches = re.findall(pattern, content, re.DOTALL)
+        print(f"🔍 Parsing AI response: {content[:200]}...")
         
-        for file_ext, file_path, file_content in matches:
-            edits.append({
-                'file_path': file_path.strip(),
-                'new_content': file_content.strip(),
-                'description': f'AI-generated modification for {file_path}'
-            })
+        # Try multiple patterns to extract file edits
+        patterns = [
+            r'```(\w+):([^\n]+)\n(.*?)```',  # ```python:file.py\ncontent```
+            r'```([^\n]+)\n(.*?)```',       # ```file.py\ncontent```
+            r'File: ([^\n]+)\n(.*?)(?=\nFile:|$)',  # File: file.py\ncontent
+            r'([^\n]+\.py)\n```\n(.*?)```',  # file.py\n```\ncontent```
+        ]
         
+        for pattern in patterns:
+            matches = re.findall(pattern, content, re.DOTALL)
+            if matches:
+                print(f"✅ Found {len(matches)} file edits with pattern: {pattern}")
+                for match in matches:
+                    if len(match) == 3:  # pattern 1
+                        file_ext, file_path, file_content = match
+                    elif len(match) == 2:  # patterns 2, 3, 4
+                        file_path, file_content = match
+                    else:
+                        continue
+                    
+                    file_path = file_path.strip()
+                    file_content = file_content.strip()
+                    
+                    # Skip if file_path is empty or looks like a language identifier
+                    if not file_path or file_path in ['python', 'javascript', 'typescript', 'json']:
+                        continue
+                    
+                    edits.append({
+                        'file_path': file_path,
+                        'new_content': file_content,
+                        'description': f'AI-generated modification for {file_path}'
+                    })
+                break
+        
+        print(f"📝 Parsed {len(edits)} file edits")
         return edits
     
     def _generate_pr_title(self, prompt: str, file_edits: list) -> str:
