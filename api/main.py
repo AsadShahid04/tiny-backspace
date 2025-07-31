@@ -520,21 +520,52 @@ print(json.dumps(result))
             
             if result.exit_code == 0 and result.stdout:
                 print(f"✅ Claude Code execution successful")
-                print(f"📝 Raw stdout: {result.stdout}")
+                print(f"📝 DEBUG: Raw stdout length: {len(result.stdout)}")
+                print(f"📝 DEBUG: Raw stdout: {result.stdout}")
+                print(f"📝 DEBUG: Raw stdout repr: {repr(result.stdout)}")
+                
+                # Try to find JSON in the output
+                stdout_lines = result.stdout.strip().split('\n')
+                print(f"📝 DEBUG: Stdout has {len(stdout_lines)} lines")
+                
+                json_line = None
+                for i, line in enumerate(stdout_lines):
+                    print(f"📝 DEBUG: Line {i}: {line}")
+                    if line.strip().startswith('{') and line.strip().endswith('}'):
+                        json_line = line.strip()
+                        print(f"📝 DEBUG: Found potential JSON on line {i}: {json_line}")
+                        break
+                
+                if not json_line:
+                    # Try the last line as JSON
+                    json_line = stdout_lines[-1].strip() if stdout_lines else ""
+                    print(f"📝 DEBUG: Using last line as JSON: {json_line}")
+                
                 try:
-                    claude_response = json.loads(result.stdout)
+                    if json_line:
+                        claude_response = json.loads(json_line)
+                    else:
+                        claude_response = json.loads(result.stdout)
+                    
                     content = claude_response.get('content', '')
-                    print(f"📝 Parsed content: {content}")
+                    print(f"📝 DEBUG: Parsed JSON successfully")
+                    print(f"📝 DEBUG: Content length: {len(content)}")
+                    print(f"📝 DEBUG: Content preview: {content[:200]}...")
                     
                     # Parse the response into file edits
                     edits = self._parse_ai_response(content)
-                    print(f"📝 Generated {len(edits)} file edits")
+                    print(f"📝 DEBUG: Generated {len(edits)} file edits from parsing")
                     
                     return edits
                 except json.JSONDecodeError as e:
                     print(f"❌ JSON decode error: {e}")
-                    print(f"📝 Failed to parse stdout: {result.stdout}")
-                    return []
+                    print(f"📝 DEBUG: Failed to parse as JSON")
+                    print(f"📝 DEBUG: Attempting to parse raw stdout as content")
+                    
+                    # Fallback: treat the entire stdout as content
+                    edits = self._parse_ai_response(result.stdout)
+                    print(f"📝 DEBUG: Fallback parsing generated {len(edits)} file edits")
+                    return edits
             else:
                 print(f"❌ Claude Code execution failed")
                 print(f"📝 Exit code: {result.exit_code}")
@@ -667,43 +698,93 @@ print(json.dumps(result))
         """Parse AI response into file edits."""
         edits = []
         
-        print(f"🔍 Parsing AI response: {content[:200]}...")
+        print(f"🔍 DEBUG: Starting to parse AI response")
+        print(f"🔍 DEBUG: Content length: {len(content)}")
+        print(f"🔍 DEBUG: Content preview (first 500 chars): {content[:500]}")
+        print(f"🔍 DEBUG: Content preview (last 500 chars): {content[-500:]}")
+        print(f"🔍 DEBUG: Full content:\n{content}")
+        print(f"🔍 DEBUG: Content repr: {repr(content)}")
         
         # Try multiple patterns to extract file edits
         patterns = [
-            r'```(\w+):([^\n]+)\n(.*?)```',  # ```python:file.py\ncontent```
-            r'```([^\n]+)\n(.*?)```',       # ```file.py\ncontent```
-            r'File: ([^\n]+)\n(.*?)(?=\nFile:|$)',  # File: file.py\ncontent
-            r'([^\n]+\.py)\n```\n(.*?)```',  # file.py\n```\ncontent```
+            (r'```(\w+):([^\n]+)\n(.*?)```', "language:filepath format"),  # ```python:file.py\ncontent```
+            (r'```([^\n]+)\n(.*?)```', "filepath format"),       # ```file.py\ncontent```
+            (r'File:\s*([^\n]+)\n(.*?)(?=\n\s*File:|$)', "File: format"),  # File: file.py\ncontent
+            (r'([^\n]+\.py)\n```\n(.*?)```', "filepath with code blocks"),  # file.py\n```\ncontent```
+            (r'```python\n([^`]+)```', "python code blocks"),  # ```python\ncode```
+            (r'```([^`]+)```', "generic code blocks"),  # ```code```
         ]
         
-        for pattern in patterns:
-            matches = re.findall(pattern, content, re.DOTALL)
+        for pattern, description in patterns:
+            print(f"🔍 DEBUG: Trying pattern '{description}': {pattern}")
+            matches = re.findall(pattern, content, re.DOTALL | re.MULTILINE)
+            print(f"🔍 DEBUG: Pattern '{description}' found {len(matches)} matches")
+            
             if matches:
-                print(f"✅ Found {len(matches)} file edits with pattern: {pattern}")
-                for match in matches:
-                    if len(match) == 3:  # pattern 1
+                print(f"✅ Found {len(matches)} file edits with pattern: {description}")
+                print(f"🔍 DEBUG: Raw matches: {matches}")
+                
+                for i, match in enumerate(matches):
+                    print(f"🔍 DEBUG: Processing match {i+1}: {match}")
+                    print(f"🔍 DEBUG: Match type: {type(match)}, length: {len(match) if isinstance(match, (tuple, list)) else 'N/A'}")
+                    
+                    if isinstance(match, tuple) and len(match) == 3:  # pattern with language:filepath
                         file_ext, file_path, file_content = match
-                    elif len(match) == 2:  # patterns 2, 3, 4
+                        print(f"🔍 DEBUG: 3-tuple match - ext: '{file_ext}', path: '{file_path}', content preview: '{file_content[:100]}...'")
+                    elif isinstance(match, tuple) and len(match) == 2:  # patterns with filepath and content
                         file_path, file_content = match
+                        print(f"🔍 DEBUG: 2-tuple match - path: '{file_path}', content preview: '{file_content[:100]}...'")
+                    elif isinstance(match, str):  # single string match
+                        file_content = match
+                        # For single matches, try to extract a reasonable filename
+                        if description == "python code blocks":
+                            file_path = "generated_code.py"
+                        else:
+                            # Try to find a filename in the content
+                            lines = file_content.split('\n')
+                            first_line = lines[0].strip()
+                            if first_line in ['python', 'javascript', 'typescript']:
+                                file_path = f"generated_code.{first_line[:2]}"
+                                file_content = '\n'.join(lines[1:])  # Remove language identifier
+                            else:
+                                file_path = "generated_code.py"
+                        print(f"🔍 DEBUG: String match - using path: '{file_path}', content preview: '{file_content[:100]}...'")
                     else:
+                        print(f"🔍 DEBUG: Unexpected match format, skipping: {match}")
                         continue
                     
                     file_path = file_path.strip()
                     file_content = file_content.strip()
                     
+                    print(f"🔍 DEBUG: Cleaned - path: '{file_path}', content length: {len(file_content)}")
+                    
                     # Skip if file_path is empty or looks like a language identifier
                     if not file_path or file_path in ['python', 'javascript', 'typescript', 'json']:
+                        print(f"🔍 DEBUG: Skipping invalid file path: '{file_path}'")
                         continue
                     
-                    edits.append({
+                    # Skip if content is too short to be meaningful
+                    if len(file_content) < 10:
+                        print(f"🔍 DEBUG: Skipping too short content: {len(file_content)} chars")
+                        continue
+                    
+                    edit = {
                         'file_path': file_path,
                         'new_content': file_content,
                         'description': f'AI-generated modification for {file_path}'
-                    })
-                break
+                    }
+                    edits.append(edit)
+                    print(f"✅ DEBUG: Added edit for {file_path} ({len(file_content)} chars)")
+                
+                if edits:  # If we found edits with this pattern, use them
+                    break
+            else:
+                print(f"❌ DEBUG: No matches found for pattern '{description}'")
         
-        print(f"📝 Parsed {len(edits)} file edits")
+        print(f"📝 DEBUG: Final result - parsed {len(edits)} file edits")
+        for i, edit in enumerate(edits):
+            print(f"📝 DEBUG: Edit {i+1}: {edit['file_path']} ({len(edit['new_content'])} chars)")
+        
         return edits
     
     def _generate_pr_title(self, prompt: str, file_edits: list) -> str:
