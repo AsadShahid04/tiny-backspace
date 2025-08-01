@@ -1,0 +1,284 @@
+{
+  "timestamp": "2025-08-01T01:01:41.227880",
+  "project": "tiny-backspace",
+  "stats": {
+    "total_runs": 13,
+    "completed_runs": 4,
+    "failed_runs": 0,
+    "running_runs": 9,
+    "avg_duration": 0.05074675,
+    "recent_activity": true,
+    "last_run_time": "2025-08-01 01:01:17.919772"
+  },
+  "runs": [
+    {
+      "id": "83f17ee7-317d-4ec3-b8d7-d9a57a9c3ef2",
+      "name": "debug_async_function",
+      "run_type": "chain",
+      "status": "completed",
+      "start_time": "2025-08-01T01:01:17.919772",
+      "end_time": "2025-08-01T01:01:18.020749",
+      "duration": 0.100977,
+      "inputs": {
+        "input_data": "debug_async_input"
+      },
+      "outputs": {
+        "output": "Async processed: debug_async_input"
+      },
+      "error": null,
+      "tags": [
+        "debug",
+        "async"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "f393df4c-6bb6-4fdc-aeaa-e43cfcb2b2ae",
+      "name": "debug_sync_function",
+      "run_type": "chain",
+      "status": "completed",
+      "start_time": "2025-08-01T01:01:17.817854",
+      "end_time": "2025-08-01T01:01:17.919228",
+      "duration": 0.101374,
+      "inputs": {
+        "input_data": "debug_sync_input"
+      },
+      "outputs": {
+        "output": "Processed: debug_sync_input"
+      },
+      "error": null,
+      "tags": [
+        "debug",
+        "sync"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "869b07f9-f72d-4932-b724-dcfc8ccef86a",
+      "name": "manual_child_operation",
+      "run_type": "llm",
+      "status": "completed",
+      "start_time": "2025-08-01T01:01:17.817487",
+      "end_time": "2025-08-01T01:01:17.817627",
+      "duration": 0.00014,
+      "inputs": {
+        "child_input": "test"
+      },
+      "outputs": {
+        "child_output": "success"
+      },
+      "error": null,
+      "tags": [],
+      "parent_run_id": "0c791f1b-8371-4742-822b-7b7b63173975",
+      "child_runs": 0
+    },
+    {
+      "id": "0c791f1b-8371-4742-822b-7b7b63173975",
+      "name": "manual_debug_trace",
+      "run_type": "chain",
+      "status": "completed",
+      "start_time": "2025-08-01T01:01:17.817173",
+      "end_time": "2025-08-01T01:01:17.817669",
+      "duration": 0.000496,
+      "inputs": {
+        "manual_test": "debug_data"
+      },
+      "outputs": {
+        "manual_result": "completed"
+      },
+      "error": null,
+      "tags": [],
+      "parent_run_id": null,
+      "child_runs": 1
+    },
+    {
+      "id": "a3a94487-6b7b-40a2-9f2b-4df0340be742",
+      "name": "debug_test_run",
+      "run_type": "llm",
+      "status": "running",
+      "start_time": "2025-08-01T01:01:17.529732",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "test": "debug"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "c0add1c6-1fca-4a61-959e-f7bcda2b0b21",
+      "name": "tiny-backspace-pr",
+      "run_type": "tool",
+      "status": "running",
+      "start_time": "2025-08-01T00:24:28.123858",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "repo_url": "https://github.com/AsadShahid04/tiny-backspace",
+        "branch_name": "feature/ef9f75ae"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "github",
+        "pr-creation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "998eb26c-36dc-4970-8eb9-1f4dfc894a32",
+      "name": "tiny-backspace-sandbox",
+      "run_type": "llm",
+      "status": "running",
+      "start_time": "2025-08-01T00:24:14.933540",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "Add a simple test endpoint",
+        "files_analyzed": 5
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "claude",
+        "code-generation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "8a0b4200-28ac-45ea-9e7c-a2d09f59a326",
+      "name": "tiny-backspace-request",
+      "run_type": "chain",
+      "status": "running",
+      "start_time": "2025-08-01T00:24:12.740926",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "repo_url": "https://github.com/AsadShahid04/tiny-backspace",
+        "prompt": "Add a simple test endpoint",
+        "request_id": "ef9f75ae"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "code-generation",
+        "pr-creation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "39dcae2d-07d6-4067-8647-c721af31ce2c",
+      "name": "tiny-backspace-pr",
+      "run_type": "tool",
+      "status": "running",
+      "start_time": "2025-08-01T00:24:07.790230",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "repo_url": "https://github.com/AsadShahid04/tiny-backspace",
+        "branch_name": "feature/f695ae06"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "github",
+        "pr-creation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "e1ad731d-9f42-421d-9e9c-0ae973b2104b",
+      "name": "test-trace",
+      "run_type": "chain",
+      "status": "running",
+      "start_time": "2025-08-01T00:24:06.192916",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "test": true,
+        "message": "Testing trace completion"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "test"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "e75e324b-1eea-449f-99ee-852fe535e68e",
+      "name": "tiny-backspace-sandbox",
+      "run_type": "llm",
+      "status": "running",
+      "start_time": "2025-08-01T00:23:55.298855",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "Add a simple test endpoint",
+        "files_analyzed": 5
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "claude",
+        "code-generation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "657490db-3c52-451d-b7ee-d649abe0bd9b",
+      "name": "tiny-backspace-request",
+      "run_type": "chain",
+      "status": "running",
+      "start_time": "2025-08-01T00:23:52.882728",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "repo_url": "https://github.com/AsadShahid04/tiny-backspace",
+        "prompt": "Add a simple test endpoint",
+        "request_id": "f695ae06"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "code-generation",
+        "pr-creation"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    },
+    {
+      "id": "2305c6c2-aa22-4fcc-b893-075f4f485bfe",
+      "name": "test-trace",
+      "run_type": "chain",
+      "status": "running",
+      "start_time": "2025-08-01T00:21:42.450664",
+      "end_time": null,
+      "duration": null,
+      "inputs": {
+        "test": true,
+        "message": "Testing trace completion"
+      },
+      "outputs": {},
+      "error": null,
+      "tags": [
+        "test"
+      ],
+      "parent_run_id": null,
+      "child_runs": 0
+    }
+  ]
+}
