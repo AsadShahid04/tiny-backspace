@@ -1,0 +1,36 @@
+{
+  "timestamp": 1754010077.220712,
+  "environment_variables": {
+    "LANGSMITH_API_KEY": "\u2705 Set: lsv2_pt_79c39ad76734...",
+    "LANGSMITH_PROJECT": "\u2705 Set: tiny-backspace",
+    "LANGSMITH_TRACING": "\u2705 Set: True",
+    "LANGSMITH_ENDPOINT": "\u2705 Set: https://api.smith.langchain.com"
+  },
+  "api_connectivity": {
+    "status": "error",
+    "message": "API returned 401",
+    "response_text": "{\"detail\":\"Invalid token\"}"
+  },
+  "client_test": {
+    "status": "error",
+    "message": "one of the hex, bytes, bytes_le, fields, or int arguments must be given"
+  },
+  "manual_tracing": {
+    "status": "success",
+    "message": "Manual tracing successful",
+    "run_id": "0c791f1b-8371-4742-822b-7b7b63173975"
+  },
+  "sync_traceable": {
+    "status": "success",
+    "result": "Processed: debug_sync_input"
+  },
+  "async_traceable": {
+    "status": "success",
+    "result": "Async processed: debug_async_input"
+  },
+  "summary": {
+    "successful_tests": 3,
+    "total_tests": 6,
+    "success_rate": "50.0%"
+  }
+}
