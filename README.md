@@ -1,290 +1,161 @@
 # Tiny Backspace
 
-A sandboxed coding agent that automatically creates pull requests based on your prompts.
+A sandboxed coding agent that can create pull requests automatically! This project implements the core technology behind autonomous coding agents with modern tooling for safety and observability.
 
-## Overview
+## 🚀 Features
 
-Tiny Backspace is an AI-powered code generation service that:
+- **Secure Sandboxing**: Uses E2B for isolated code execution
+- **AI-Powered Code Generation**: Leverages Claude 3.5 Sonnet for intelligent code changes
+- **Real-time Streaming**: Server-Sent Events for live progress updates
+- **Automatic PR Creation**: GitHub API integration for seamless pull request generation
+- **Modern Architecture**: FastAPI with async/await for high performance
 
-1. Takes a GitHub repository URL and a coding prompt
-2. Clones the repository into a secure E2B sandbox
-3. Uses Claude Code (running locally) to generate code changes
-4. Applies the changes in the sandbox
-5. Creates a pull request with the modifications
+## 🏗️ Architecture
 
-<<<<<<< Updated upstream
-### **✅ Recent Implementation Success**
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Client        │    │   FastAPI       │    │   E2B Sandbox   │
+│   (Browser/     │───▶│   Server        │───▶│   (Secure       │
+│   API Client)   │    │   (Port 8000)   │    │   Environment)  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   GitHub API    │
+                       │   (PR Creation) │
+                       └─────────────────┘
+```
 
-The system has been successfully tested and is fully functional:
+## 📋 Prerequisites
 
-- **✅ FastAPI Server**: Running with Server-Sent Events streaming
-- **✅ E2B Sandbox**: Secure sandboxed execution working
-- **✅ Claude Code**: AI agent generating meaningful code modifications
-- **✅ GitHub Integration**: Automatic PR creation verified
-- **✅ Real-time Streaming**: Progress updates working perfectly
+- Python 3.8+
+- GitHub Personal Access Token (PAT)
+- Anthropic API Key
+- E2B API Key (for sandboxing)
 
-**Latest Test Results**: Successfully created PR #12 with logging functionality for the tiny-backspace repository!
+## 🛠️ Setup
 
-## 🚀 **Quick Start**
-=======
-## Architecture
->>>>>>> Stashed changes
-
-- **Local AI Agent**: Claude Code runs locally for code generation
-- **Secure Sandbox**: E2B provides isolated execution environment
-- **Git Operations**: All Git operations happen within the sandbox
-- **Real-time Streaming**: Server-Sent Events provide live updates
-
-## Quick Start
-
-### Prerequisites
-
-1. **GitHub Personal Access Token** with repo permissions
-2. **Anthropic API Key** for Claude Code
-3. **E2B API Key** for sandboxing
-4. **Python 3.8+**
-
-### Installation
-
-1. Clone the repository:
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/tiny-backspace.git
+git clone https://github.com/yourusername/tiny-backspace.git
 cd tiny-backspace
 ```
 
-<<<<<<< Updated upstream
-### **Run Locally (FastAPI Server)**
-
-```bash
-# Start the FastAPI server
-python api/main.py
-
-# Test the server
-curl -X GET "http://localhost:8000/health"
-
-# Test the main endpoint
-curl -X POST "http://localhost:8000/code" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
-    "prompt": "Add a simple logging feature to track API requests"
-  }' --no-buffer
-```
-
-### **Run Locally (Legacy Vercel Functions)**
-=======
-2. Create a virtual environment:
->>>>>>> Stashed changes
+### 2. Create Virtual Environment
 
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-<<<<<<< Updated upstream
+```
 
-# Install dependencies
+### 3. Install Dependencies
+
+```bash
+cd api
 pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env  # Edit with your API keys
-
-# Start server
-python api/main.py
-
-# Test locally
-curl -X POST "http://localhost:8000/code" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
-    "prompt": "Add a test section to README"
-  }'
-=======
->>>>>>> Stashed changes
 ```
 
-3. Install dependencies:
+### 4. Environment Configuration
 
-<<<<<<< Updated upstream
-I chose **Claude Code (Anthropic)** as the primary AI agent for this implementation:
+Create a `.env` file in the root directory:
 
-### **Primary: Claude Code (Anthropic)**
-
-- **Why**: Superior reasoning for complex code analysis and context understanding
-- **Strengths**: Best code generation quality, reduced hallucinations, advanced pattern recognition
-- **Model**: `claude-3-5-sonnet-20241022` (latest stable version)
-- **Use Case**: Primary choice for all code modifications
-- **Integration**: Runs directly in E2B sandbox environment
-
-### **Implementation Details**
-
-- **Sandboxed Execution**: Claude Code runs securely in E2B sandbox
-- **Repository Analysis**: Automatically analyzes repository structure
-- **File Parsing**: Intelligently parses AI responses into file modifications
-- **Error Handling**: Graceful fallbacks and comprehensive error management
-
-**Why This Approach?** Claude Code provides the best balance of code quality, reasoning capabilities, and reliability for autonomous coding tasks. The sandboxed execution ensures security while maintaining full functionality.
-
-## 🔍 **How It Works**
-
-### **Real-Time Streaming Flow**
-
-1. **API Call** → Validates repo URL and initializes environment
-2. **Repository Analysis** → Scans structure and identifies relevant files
-3. **AI Processing** → Generates code modifications using selected agent
-4. **GitHub Integration** → Creates branch, applies changes, generates PR
-5. **Observability** → Streams progress updates and performance metrics
-
-### **Observability & Monitoring**
-
-- **Langsmith Dashboard**: https://smith.langchain.com/ - Real-time traces of agent thinking process
-- **Streaming Telemetry**: 24+ thinking steps with performance metrics
-- **Example Response**:
-=======
 ```bash
-pip install -r api/requirements.txt
+# GitHub Configuration
+GITHUB_PAT=your_github_personal_access_token_here
+
+# AI Configuration
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Sandbox Configuration (optional - E2B provides free tier)
+E2B_API_KEY=your_e2b_api_key_here
 ```
 
-4. Set up environment variables:
+### 5. Get API Keys
+
+#### GitHub Personal Access Token
+
+1. Go to GitHub Settings → Developer settings → Personal access tokens
+2. Generate a new token with `repo` scope
+3. Copy the token to your `.env` file
+
+#### Anthropic API Key
+
+1. Sign up at [Anthropic Console](https://console.anthropic.com/)
+2. Create an API key
+3. Copy the key to your `.env` file
+
+#### E2B API Key (Optional)
+
+1. Sign up at [E2B](https://e2b.dev/)
+2. Get your API key from the dashboard
+3. Copy the key to your `.env` file
+
+#### LangSmith API Key (Optional - for observability)
+
+1. Sign up at [LangSmith](https://smith.langchain.com/)
+2. Create an API key in your settings
+3. Copy the key to your `.env` file
+
+## 🚀 Running Locally
+
+### Start the Server
 
 ```bash
-cp env.example .env
-# Edit .env with your API keys
-```
-
-5. Run the server:
-
-```bash
-python api/main.py
+cd api
+python main.py
 ```
 
 The server will start on `http://localhost:8000`
 
-### Usage
+### Test the API
 
-Send a POST request to `/code` with:
->>>>>>> Stashed changes
+Use the provided test script:
 
-```json
-{
-  "repoUrl": "https://github.com/username/repo-name",
-  "prompt": "Add a simple test endpoint"
-}
-```
-
-The response will be a Server-Sent Events stream showing:
-
-<<<<<<< Updated upstream
-- **🔒 E2B Sandboxed Execution**: Secure, isolated environment for code processing
-- **🤖 Claude Code Integration**: Real AI coding agent running in sandbox
-- **🔗 GitHub Automation**: Automatic PR creation with AI-generated descriptions
-- **📡 Real-Time Streaming**: Server-Sent Events for live progress updates
-- **📊 Comprehensive Observability**: Langsmith traces + performance telemetry
-- **🛡️ Error Handling**: Graceful fallbacks and comprehensive error management
-
-## 🔧 **Configuration**
-
-### **Required Environment Variables**
-
-```env
-# Required for sandboxed execution
-E2B_API_KEY=your_e2b_api_key
-
-# AI Providers (at least one required)
-ANTHROPIC_API_KEY=your_claude_key
-OPENAI_API_KEY=your_openai_key
-
-# GitHub Integration
-GITHUB_PAT=your_github_token
-
-# Observability (optional but recommended)
-LANGSMITH_API_KEY=your_langsmith_key
-```
-
-**API Key Sources:**
-
-- **E2B**: https://e2b.dev/ (sandboxed execution)
-- **GitHub PAT**: https://github.com/settings/tokens (repo scope)
-- **OpenAI**: https://platform.openai.com/api-keys
-- **Anthropic**: https://console.anthropic.com/
-- **Langsmith**: https://smith.langchain.com/ (free tier)
-
-## 🏗️ **Architecture**
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Client        │    │   API Backend   │    │   E2B Sandbox   │
-│   (Frontend)    │◄──►│   (Vercel)      │◄──►│  (Claude Code)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │                        │
-                              ▼                        ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │   GitHub API    │    │   Repository    │
-                       │  (PR Creation)  │    │   (Cloned)      │
-                       └─────────────────┘    └─────────────────┘
-=======
-- Repository cloning progress
-- Code analysis and generation
-- File modifications
-- Git operations
-- Pull request creation
-
-### Example Response Stream
-
-```
-data: {"type": "info", "message": "🚀 Starting request abc12345"}
-data: {"type": "info", "message": "📁 Repository: https://github.com/example/repo"}
-data: {"type": "info", "message": "💭 Prompt: Add a simple test endpoint"}
-data: {"type": "info", "message": "💭 [SANDBOX] Creating secure E2B sandbox environment"}
-data: {"type": "success", "message": "💭 [SANDBOX] E2B sandbox created successfully with ID: xyz789"}
-data: {"type": "info", "message": "💭 [CLONE] Cloning repository https://github.com/example/repo into sandbox"}
-data: {"type": "success", "message": "💭 [CLONE] Repository successfully cloned into sandbox"}
-data: {"type": "info", "message": "🔍 [ANALYSIS] Analyzing repository structure"}
-data: {"type": "success", "message": "🔍 [ANALYSIS] Repository analysis complete: 15 files found"}
-data: {"type": "info", "message": "🤖 [AI_PROCESSING] Processing with Claude Code locally"}
-data: {"type": "info", "message": "🔧 [APPLYING] Applying code changes in sandbox"}
-data: {"type": "info", "message": "🔧 [GIT] Setting up Git operations in sandbox"}
-data: {"type": "info", "message": "🔧 [GIT] Creating branch: feature/abc12345"}
-data: {"type": "info", "message": "🔧 [PR] Creating pull request"}
-data: {"type": "success", "message": "✅ [SUCCESS] Pull request created: https://github.com/example/repo/pull/123"}
->>>>>>> Stashed changes
-```
-
-## API Endpoints
-
-<<<<<<< Updated upstream
 ```bash
-# Test the complete workflow
-python test_full_workflow.py
+python test_simple.py
+```
 
-# Test the FastAPI server
-python api/main.py
+Or make a direct API call:
 
-# Test with curl
-curl -X POST "http://localhost:8000/code" \
+```bash
+curl -X POST http://localhost:8000/code \
   -H "Content-Type: application/json" \
   -d '{
-    "repoUrl": "https://github.com/AsadShahid04/tiny-backspace",
-    "prompt": "Add a simple logging feature to track API requests"
-  }' --no-buffer
+    "repoUrl": "https://github.com/yourusername/test-repo",
+    "prompt": "Add a simple print statement to main.py"
+  }'
+```
 
-# Check Langsmith traces (if configured)
-# Visit: https://smith.langchain.com/
-=======
+## 📡 API Endpoints
+
 ### POST /code
 
-Main endpoint for code generation.
+Main endpoint for code generation and PR creation.
 
 **Request Body:**
 
 ```json
 {
-  "repoUrl": "string (required)",
-  "prompt": "string (required)"
+  "repoUrl": "https://github.com/owner/repo",
+  "prompt": "Add input validation to all POST endpoints"
 }
->>>>>>> Stashed changes
 ```
 
-**Response:** Server-Sent Events stream
+**Response:** Server-Sent Events stream with real-time updates
+
+**Example Stream:**
+
+```
+data: {"type": "info", "message": "🚀 Starting request abc12345"}
+data: {"type": "info", "message": "📁 Repository: https://github.com/owner/repo"}
+data: {"type": "info", "message": "💭 Creating E2B sandbox"}
+data: {"type": "success", "message": "✅ Sandbox created: sandbox_123"}
+data: {"type": "info", "message": "📥 Cloning repository"}
+data: {"type": "success", "message": "✅ Repository cloned"}
+data: {"type": "info", "message": "🤖 Generating code with Claude"}
+data: {"type": "success", "message": "✅ Pull request created: https://github.com/owner/repo/pull/123"}
+```
 
 ### GET /health
 
@@ -299,93 +170,140 @@ Health check endpoint.
 }
 ```
 
-## Environment Variables
+## 🌐 Deployment
 
-| Variable            | Description                       | Required |
-| ------------------- | --------------------------------- | -------- |
-| `GITHUB_PAT`        | GitHub Personal Access Token      | Yes      |
-| `ANTHROPIC_API_KEY` | Anthropic API Key for Claude Code | Yes      |
-| `E2B_API_KEY`       | E2B API Key for sandboxing        | Yes      |
-| `OPENAI_API_KEY`    | OpenAI API Key (alternative)      | No       |
+### Vercel Deployment
 
-## Security Features
+The project includes Vercel configuration for easy deployment:
+
+1. Install Vercel CLI: `npm i -g vercel`
+2. Deploy: `vercel --prod`
+
+### Docker Deployment
+
+```bash
+# Build the image
+docker build -t tiny-backspace .
+
+# Run the container
+docker run -p 8000:8000 --env-file .env tiny-backspace
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable            | Description                  | Required            |
+| ------------------- | ---------------------------- | ------------------- |
+| `GITHUB_PAT`        | GitHub Personal Access Token | Yes                 |
+| `ANTHROPIC_API_KEY` | Anthropic API Key            | Yes                 |
+| `E2B_API_KEY`       | E2B API Key                  | No (uses free tier) |
+| `LANGSMITH_API_KEY` | LangSmith API Key for observability | No (optional) |
+
+### Customization
+
+You can customize the AI model, sandbox settings, and other parameters by modifying the configuration in `api/main.py`.
+
+## 🧪 Testing
+
+### Run Tests
+
+```bash
+# Test the basic API functionality
+python test_simple.py
+
+# Test with LangSmith observability
+python test_langsmith.py
+
+# Debug Claude API
+python debug_claude.py
+```
+
+### Test with Different Repositories
+
+Modify the `repoUrl` and `prompt` in `test_simple.py` to test with different scenarios.
+
+## 🔒 Security
 
 - **Sandboxed Execution**: All code runs in isolated E2B environments
-- **Local AI Processing**: Claude Code runs locally, not in the sandbox
-- **Secure File Operations**: File modifications happen in controlled sandbox
-- **Git Authentication**: Uses GitHub Personal Access Token for secure operations
+- **Token Security**: API keys are stored in environment variables
+- **Input Validation**: Repository URLs and prompts are validated
+- **Error Handling**: Comprehensive error handling prevents information leakage
 
-## Development
+## 📊 Observability
 
-### Project Structure
+The application provides comprehensive observability through:
 
-```
-tiny-backspace/
-<<<<<<< Updated upstream
-├── api/                    # FastAPI server and Vercel functions
-│   ├── main.py            # FastAPI server with SSE streaming
-│   ├── code.py            # Legacy Vercel function
-│   └── simple_observability.py  # Observability module
-├── test_full_workflow.py  # Complete workflow test
-├── requirements.txt       # Python dependencies
-├── .env                   # Environment variables
-└── README.md             # This file
-=======
-├── api/
-│   ├── main.py              # FastAPI application
-│   ├── requirements.txt     # Python dependencies
-│   └── simple_observability.py  # Observability utilities
-├── venv/                    # Python virtual environment
-├── .env                     # Environment variables (create from env.example)
-├── env.example             # Environment variables template
-└── README.md               # This file
->>>>>>> Stashed changes
-```
+- **Server-Sent Events**: Live progress updates
+- **LangSmith Integration**: Real-time AI agent telemetry and tracing
+- **Structured Logging**: JSON-formatted logs with detailed metadata
+- **Error Tracking**: Detailed error messages and stack traces
+- **Request Tracking**: Unique request IDs for tracing
+- **Performance Metrics**: Token usage, response times, and success rates
 
-### Running Tests
+### LangSmith Dashboard
 
-```bash
-# Start the server
-python api/main.py
+When configured with a LangSmith API key, you can view:
+- **AI Agent Thinking Process**: See exactly how Claude analyzes and generates code
+- **Request Traces**: Complete end-to-end request flows
+- **Performance Analytics**: Token usage, response times, and success rates
+- **Error Analysis**: Detailed error tracking and debugging information
+- **Custom Metrics**: File analysis, code changes, and PR creation success rates
 
-# In another terminal, test the endpoint
-curl -X POST http://localhost:8000/code \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repoUrl": "https://github.com/your-username/test-repo",
-    "prompt": "Add a simple test endpoint"
-  }'
-```
-
-## Deployment
-
-### Local Development
-
-```bash
-python api/main.py
-```
-
-### Production
-
-The application can be deployed to any platform that supports FastAPI:
-
-- Railway
-- Heroku
-- DigitalOcean App Platform
-- AWS Lambda (with modifications)
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Add tests
 5. Submit a pull request
 
-## License
+## 📝 License
 
-MIT License - see LICENSE file for details.
+MIT License - see LICENSE file for details
 
-## Support
+## 🆘 Troubleshooting
 
-For issues and questions, please open a GitHub issue.
+### Common Issues
+
+1. **"GITHUB_PAT environment variable is required"**
+
+   - Make sure your `.env` file exists and contains the GitHub token
+
+2. **"ANTHROPIC_API_KEY environment variable is required"**
+
+   - Ensure your Anthropic API key is set in the `.env` file
+
+3. **"Clone failed"**
+
+   - Check that the repository URL is correct and publicly accessible
+   - Verify your GitHub token has the necessary permissions
+
+4. **"Failed to create PR"**
+   - Ensure the repository exists and you have write access
+   - Check that the base branch (usually 'main') exists
+
+### Debug Mode
+
+Run with debug logging:
+
+```bash
+python -u api/main.py
+```
+
+## 🎯 Example Use Cases
+
+1. **Add Input Validation**: "Add Pydantic validation to all POST endpoints"
+2. **Fix Security Issues**: "Add CORS headers and input sanitization"
+3. **Improve Error Handling**: "Add proper error handling and logging"
+4. **Add Features**: "Add a new endpoint for user authentication"
+5. **Refactor Code**: "Refactor the main function to use dependency injection"
+
+## 🔮 Future Enhancements
+
+- [ ] Support for multiple AI models
+- [ ] Advanced sandbox configurations
+- [ ] Webhook support for automated triggers
+- [ ] Integration with CI/CD pipelines
+- [ ] Support for private repositories
+- [ ] Advanced code analysis and suggestions
